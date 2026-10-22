@@ -30,3 +30,8 @@ The same folder is the default output directory. It must be empty or not exist w
 Each epoch log prints train loss/accuracy, validation loss/accuracy, both learning rates, elapsed seconds, and `*best`. Phase 3 can early-stop, just like the original run.
 
 The AnyDesk venv should already contain compatible PyTorch and torchvision. `requirements.txt` lists only NumPy and Matplotlib; do not replace the existing CUDA-enabled PyTorch installation for this experiment.
+cd D:\tensornetwork_mnist\tensornetwork_mnist
+.\venv\Scripts\Activate.ps1
+python .\full_quantum_16x16_mlp_aug\run_mlp_aug.py `  --device cuda`
+--core-lr 1e-5 `  --readout-lr 1e-3`
+--out-dir .\full_quantum_16x16_mlp_aug\runs\mlp_aug_finetune
