@@ -1,0 +1,54 @@
+GIAI THICH BAN FULLQUANTUMQCNN 32x32
+Cap nhat: 2026-10-22
+
+1. MUC DICH
+Ban nay la mot thí nghiem rieng de xem FullQuantumQCNN co the tan dung anh MNIST kich thuoc lon hon ban cu hay khong. Model duoc khoi tao tu trong so ngau nhien va train tren day du 50.000 mau train; khong nap checkpoint tu model 16x16, hard-only hay fine-tune.
+
+2. NHUNG THAY DOI CHINH SO VOI MODEL 16x16
+- Anh MNIST goc la 28x28. Ban 16x16 truoc day resize anh xuong 16x16 bang bilinear interpolation, tu 784 pixel con 256 site dau vao.
+- Ban moi khong resize. `preprocess_full_quantum(..., mode="pad")` them vien 0 o giua cac canh: 28x28 -> 32x32. Vi 32-28=4 nen them 2 pixel moi canh tren/duoi/trai/phai. Phan anh goc duoc giu nguyen gia tri pixel.
+- Model moi nhan 32*32=1.024 site dau vao moi anh, gap 4 lan 256 site cua ban 16x16. `final_qubits=8`, vi vay TN gop 1.024/8=128=2^7 nhom, tuong ung 7 tang/block gop thay vi 5 khi dau vao 16x16.
+- Cac thanh phan chinh khac duoc giu theo cau hinh full quantum tot nhat cu: grayscale, 3 nhanh tensor network song song, readout Pauli `full9`, `strongly_entangling`, 4 lop, `merge_rounds=2`, `init_scale=0.01`, 8 qubit cuoi. Ba nhanh la ba bo tham so rieng, trung binh logits truoc khi tinh cross-entropy.
+- Thay doi ve preprocess duoc them duoi dang tham so `preprocess_mode`. Gia tri mac dinh van la `resize`, nen cac model cu van resize nhu truoc. Rieng `FQ_ARCH_32` dat `preprocess_mode="pad"`.
+
+3. CAU TRUC FOLDER 32x32
+`full_quantum_32x32/` la ban sao tu chua code Python de co the copy ca folder sang AnyDesk:
+- `run_32x32.py`: entry point; tao model random, tao data loaders, chay 3 phase, ghi config/history va goi ve convergence plots.
+- `training_utils.py`: ban sao cac ham training chung tu `run_convergence.py` nhu `make_loaders`, `run_epoch`, `run_phase`, luu checkpoint atomic, `plot_all`, `write_history`. Ban runner chung nay van co mot so code ho tro cac model khac khong dung trong run 32x32.
+- `models/`: ban sao `FullQuantumQCNN`, tensor-network core, unitary, readout va reupload.
+- `data/`: ban sao encoding RY va preprocessing resize/pad.
+- `requirements.txt`: torch, torchvision, numpy, matplotlib.
+- `README.md`: cach chay nhanh.
+Ban nay import cac package Python tu folder 32x32, khong can import `models/`, `data/` hay `run_convergence.py` o project root. Van can Python packages cai san trong venv va MNIST dataset (co the dung `mnist_data` o project root).
+
+4. DU LIEU VA QUY TRINH TRAIN
+- Dung MNIST official train set, tach co dinh bang split seed 20260911: 50.000 mau train va 10.000 mau validation.
+- Chi 50.000 train cap nhat gradient. Validation duoc tinh moi epoch de chon checkpoint/early stop; khong duoc train. MNIST official test khong duoc dung.
+- Phase 1: khoi tao ngau nhien, chua them reupload; Adam lr 2e-3, toi da 20 epoch; luu checkpoint co validation accuracy cao nhat.
+- Phase 2: khoi tao tu checkpoint tot nhat phase 1; optimizer Adam moi lr 2e-4, toi da 5 epoch; chon theo validation accuracy.
+- Phase 3: them reupload_scale moi, tiep tuc tu phase 2; Adam core lr 1e-4, readout lr 1e-3, ReduceLROnPlateau factor 0.5/patience 3; toi da 60 epoch, early stop neu validation loss khong tot hon trong 10 epoch; chon checkpoint validation loss thap nhat.
+- Cac phase co checkpoint `*_best.pt`, `*_last.pt` va file `*_done.json`. `*_last.pt` duoc ghi sau moi epoch. Neu bi ngat, chay lai cung lenh, cung output directory de tiep tuc. Khong dung `--no-resume` khi muon resume.
+
+5. NOI LUU KET QUA VA LENH CHAY
+Lenh da dung tren may AnyDesk (PowerShell tai project root, venv dang active):
+
+python .\full_quantum_32x32\run_32x32.py --data-root .\mnist_data --device cuda --out-dir .\full_quantum_32x32\runs\full_quantum_32x32 --batch-size 16 --phase1-epochs 20 --phase2-epochs 5 --phase3-epochs 60 --phase3-patience 10
+
+Ket qua duoc tach rieng trong `full_quantum_32x32/runs/full_quantum_32x32/`, gom:
+- `config_32x32.json`: kien truc, du lieu, seed va tham so cac phase.
+- `history_full_quantum.csv`: loss/accuracy train va validation moi epoch.
+- `fq32_phase1_pretrain_*`, `fq32_phase2_refine_*`, `fq32_phase3_reupload_*`: checkpoint phase.
+- `convergence_all.png`, `convergence_per_model.png`, `summary.json`: bieu do va tong ket do helper tao.
+
+6. DOC LOG HIEN TAI
+Log den het phase 1 epoch 6:
+- Epoch 1: train accuracy 87.18%, validation accuracy 93.94%.
+- Epoch 4: validation accuracy cao nhat trong log duoc gui la 96.17% (val loss 0.1339).
+- Epoch 6: train accuracy 95.82%, validation accuracy 95.94% (val loss 0.1366).
+Validation co dao dong giua cac epoch; script chon checkpoint tot nhat phase 1 theo validation accuracy, khong mac dinh lay epoch cuoi. Moi epoch mat khoang 4.217-4.262 giay (xap xi 70-71 phut), nen toan bo 85 epoch co the keo dai nhieu ngay. Thoi gian thuc te tuy GPU va early stopping.
+
+7. CACH SO SANH VA CAC GIOI HAN
+- Baseline truoc day: 16x16, validation accuracy 97.71%, validation loss khoang 0.0740 tren cung split seed 20260911.
+- Chi so sanh cong bang khi dung validation split nay va checkpoint tot nhat; accuracy phase 1 hien chua the hien model 32x32 tot hon baseline. Can doi den khi co checkpoint/metric tot nhat cua ca qua trinh; ghi nhan ca validation loss, khong chi accuracy.
+- Tang tu 256 len 1.024 site lam chi phi tinh toan tang manh, khong dam bao accuracy cao hon hay dat 99%. Hien tai mot epoch khoang 71 phut.
+- Khong thay doi `run_convergence.py` tren AnyDesk de chay folder tu chua; neu sua code trong `full_quantum_32x32/`, sua ban copy do va copy lai nguyen folder sang may AnyDesk truoc khi chay lai.

@@ -1,0 +1,231 @@
+PHAN TICH MODEL FULL_QUANTUM 16x16 VA CAC THU NGHIEM NEN LAM
+Cap nhat: 2026-10-22
+
+PHAM VI VA NGUON DOI CHIEU
+- Phan tich code hien tai: run_convergence.py, models/full_quantum_qcnn.py,
+  models/layers/tn_core.py, models/layers/unitary.py, models/layers/readout.py,
+  models/reupload.py, data/preprocessing.py, data/encoding.py.
+- Doi chieu log: full_quantum/full_quantum/config.json,
+  full_quantum/full_quantum/history_full_quantum.csv va summary.json.
+- Ket qua train 701 mau sai / cac cap nham duoc nhac den dua tren CSV va log
+  nguoi dung da gui trong hoi thoai; day la ket qua tren train, khong phai
+  confusion matrix validation.
+- Day la danh gia tu ma nguon va log; chua sua model hay chay them training.
+
+KET LUAN NGAN
+Model 16x16 dat 97.71% validation o checkpoint duoc chon theo validation loss.
+Khong thay loi ro rang nao trong pipeline train/validation tu cac file da xem.
+Nhung nut that dang de thu truoc la: (1) moi block TN cat mat tuong quan giua
+cac cap pixel sau khi trace qubit; (2) ghep anh 2D thanh chuoi row-major roi
+pool theo cap lien tiep; (3) ba nhanh deu nhan cung thu tu row va khong co co
+che bat buoc chung chuyen mon; (4) giam anh 28x28 xuong 16x16 va khong augmentation.
+Day la cac gia thuyet co co so tu implementation, chua phai bang chung rang mot
+thay doi cu the chac chan dua accuracy len 99%.
+
+1. BASELINE 16x16 DANG CHAY NHU THE NAO
+
+Du lieu va danh gia
+- MNIST official train duoc chia co dinh thanh 50.000 train va 10.000 validation,
+  split seed 20260911. Official test khong duoc dung trong run nay.
+- Anh duoc ToTensor ve [0,1], chuyen grayscale neu can, sau do resize bilinear
+  tu 28x28 xuong 16x16 va flatten thanh 256 pixel sites.
+- Moi pixel p duoc ma hoa thanh qubit RY voi theta = pi*p:
+  cos(theta/2)|0> + sin(theta/2)|1>.
+- Khong co data augmentation trong baseline.
+
+TN core va readout
+- Moi nhanh nhan 256 qubit/site dau vao va giam con 8 site qua
+  log2(256/8)=5 QuantumConvPoolBlock.
+- Mot block ghep tung cap site (0,1), (2,3),...; ap dung LearnedUnitary2Q conv,
+  roi LearnedUnitary2Q pool, sau do trace bo qubit thu hai trong tung cap. Trong
+  mot block, cung mot cap tham so conv/pool duoc dung lap lai cho moi cap site.
+- Dau ra block la danh sach cac ma tran mat do 2x2 rieng cho tung site con lai.
+  Block ke tiep ghep cac site nay nhu cac trang thai doc lap.
+- Sau 5 block, 8 qubit duoc ghep thanh joint density matrix 256x256. Moi nhanh
+  chay 4 layer strongly-entangling tren 8 qubit roi readout Pauli + lop Linear.
+- Readout full9 co 24 dac trung Pauli don va 252 tuong quan Pauli theo cap,
+  tong 276 feature cho lop Linear 10 lop.
+- quantum_channels=3 tao ba nhanh tn_core/readout rieng, doc cung anh va trung
+  binh logits. FQ_ARCH khong truyen spatial_orders; model mac dinh row cho ca ba
+  nhanh. Nhu vay ba nhanh co trong so rieng nhung cung mot cach sap xep pixel.
+- Phase 3 them 8 reupload_scale cho moi nhanh, tong +24 tham so; moi scale bat
+  dau bang 0 de warm-start giu nguyen hanh vi model phase 2.
+- Tong so tham so ghi trong code la 13.110 truoc reupload va 13.134 sau reupload.
+  Rieng ba lop Linear full9 co 3 x (276*10 + 10) = 8.310 tham so.
+
+Lich train
+- Phase 1: tu dau, Adam lr=0.002, 20 epoch, batch 64; chon checkpoint theo
+  validation accuracy.
+- Phase 2: tiep tuc tu best phase 1, Adam moi lr=0.0002, 5 epoch; van chon theo
+  validation accuracy.
+- Phase 3: them reupload va warm-start tu phase 2; Adam core lr=0.0001,
+  readout lr=0.001; ReduceLROnPlateau factor 0.5/patience 3; toi da 60 epoch,
+  early-stop patience 10; chon checkpoint theo validation loss.
+- Tong log co 85 epoch: 20 + 5 + 60. Sau khi scheduler xu ly validation loss
+  cua global epoch 75, LR phase 3 giam xuong 0.00005/0.0005; dong log epoch 76
+  la dong dau tien ghi LR moi.
+
+Ket qua log
+- Phase 1 dat validation accuracy cao nhat 96.82% (global epoch 19).
+- Phase 2 dat validation accuracy cao nhat 97.25% (global epoch 22).
+- Phase 3 dat validation accuracy cao nhat 97.73% (global epoch 66).
+- Checkpoint duoc chon theo validation loss o epoch 82: val loss 0.074029,
+  val accuracy 97.71%. Vi criterion chon checkpoint la val loss, ket qua summary
+  97.71%, du co epoch khac dat accuracy toi da 97.73%.
+- Epoch 85: train accuracy 98.582%, val accuracy 97.63%, train loss 0.04925,
+  val loss 0.07451. Khoang cach train-validation accuracy khoang 0.95 diem phan
+  tram: co generalization gap nho-vua, chua cho thay overfit nang.
+- 97.71% tren 10.000 validation mau tuong ung khoang 229 mau sai. De len 99%
+  tren cung validation set can con khoang 100 mau sai, tuc can giam them xap xi
+  129 loi so voi checkpoint 97.71%.
+- Phase 3 best accuracy va best loss khong cung epoch. Khi so sanh cac run, luu
+  ca hai metric va ghi ro chon checkpoint theo tieu chi nao.
+- Ba dong epoch_seconds dau tien trong history la 185.188k, 128.308k,
+  114.704k giay, khac han cac dong con lai. Khong nen dung ba dong nay de uoc
+  tinh runtime. Median cac dong con lai xap xi 1.400 giay/epoch phase 1,
+  1.408 giay/epoch phase 2 va 1.004 giay/epoch phase 3. Tong thoi gian train
+  thuc te theo cac median nay vao khoang 26.5 gio.
+
+2. CAC YEU TO CO THE GIOI HAN HIEU SUAT
+
+A. Mat tuong quan giua cac site sau pooling — uu tien nghien cuu cao nhat
+Trong QuantumConvPoolBlock, sau khi moi cap duoc ap dung conv/pool, code chi giu
+reduced density matrix cua qubit song sot va trace qubit con lai. Tuong quan giua
+cap nay voi cac cap khac khong duoc mang sang block ke tiep. Vi vay 5 block dau
+khong duy tri mot trang thai toan cuc/MPS co bond noi cac pixel; no truyen cac
+trang thai don-qubit da factorize. Chi 8 site cuoi moi duoc ghep va entangle lai.
+
+Day la bottleneck bieu dien co the quan trong: dac trung net nam trong quan he
+khong gian cua nhieu pixel co the bi mat truoc khi den merge stage. Tuy nhien,
+day la tinh chat kien truc da chon, khong tu dong la loi code.
+
+Luu y ve bond dimension: code 16x16 hien tai khong co tham so bond_dimension de
+tang. Moi site truyen ma tran 2x2; giai doan cuoi tao density matrix 256x256 cho
+8 qubit. Muon bond dimension chi ro thi phai viet/doi TN core sang MPS/TT hoac
+TN co bond noi cac site. Tang final_qubits khong tuong duong tang MPS bond va
+co the lam joint density matrix tang rat nhanh.
+
+B. Sap xep 2D thanh chuoi 1D
+Pixel duoc flatten row-major va cac block luon ghep cap site ke nhau. Cach nay
+giu cac cap pixel ngang gan nhau o block dau, nhung topo cac block sau la mot
+cay tren chuoi, khong phai convolution/pooling 2D chuan. Ma nguon da co ho tro
+row, column, Morton permutation; baseline mac dinh dung row cho ca ba nhanh.
+Morton co the dua cac patch 2D gan nhau vao cung nhanh cua cay som hon.
+
+C. Ba nhanh hien khong co du lieu vao khac nhau
+Ba nhanh co cac tham so hoc rieng nen co the thanh experts khac nhau, nhung ca
+ba nhan cung mot row-major input va cung loss chung. Khong co loss phu hay
+gating buoc chung chuyen mon. Chung co the bo sung nhau, nhung cung co the hoc
+giai phap gan giong nhau; compute gan ba lan mot nhanh. Day la dieu can do bang
+ablation, khong nen mac dinh ba nhanh tot hon mot nhanh.
+
+D. Giam 28x28 xuong 16x16
+Bilinear resize loai bo hon nua chieu moi anh truoc encoding. Net nho, do day
+net va chieu cong cua cac chu so co the bi lam tron. Loi tren cac cap 4->9,
+9->4, 3->5, 9->7, 7->9 trong train CSV da gui co the mot phan do net ve chu,
+nhung can xem confusion matrix validation de xac nhan.
+
+Khong nen ket luan rang 32x32 se tu dong tot hon: code 32x32 pad zero len
+1024 sites, so block tang tu 5 len 7 va so site-pair contraction tang xap xi
+4 lan moi nhanh. Log 32x32 nguoi dung gui co epoch phase 1 mat khoang 4.2k-4.9k
+giay va val cao nhat thay trong cac epoch do la 96.72% o epoch 14. Do run do
+chua hoan thanh phase 2/3, khong the so ket qua phase 1 nay voi checkpoint cuoi
+97.71% cua model 16x16.
+
+E. Readout chiem phan lon so tham so
+Ba Linear full9 chua 8.310/13.134 tham so sau reupload, xap xi 63%. Day la
+readout co classical linear layer, du phan trich xuat la quantum-inspired/TN.
+So tham so nhieu khong chung minh overfit; gap train-validation chi khoang 1
+diem %. Nhung full9 va readout ZZ nen duoc so sanh de biet them tuong quan
+Pauli co thuc su giup validation hay chi tang do phuc tap.
+
+F. Khoi tao gate gan identity va parameterization unitary
+LearnedUnitary khoi tao raw matrices voi scale 0.01 va dung matrix exponential;
+gate ban dau gan identity. Moi unitary duoc tao tu ma tran Hermitian/skew de
+giu tinh unitary, nhung cac phan tu raw co mot so bac tu do trung lap. Day la
+gia thuyet ve toc do/hinh dang toi uu, khong co dau hieu trong log rang day la
+nguyen nhan chinh. Khong nen doi init_scale cung luc voi thay doi khac.
+
+G. Augmentation va regularization chua duoc thu trong baseline
+Baseline chi dung pixel [0,1]. Augmentation dich nhe/rotate nhe co the lam
+model chiu duoc sai lech net chu, nhung xoay/dich manh co the thay doi nhan hoac
+lam mat chi tiet. Gap train-val vua phai nen regularization co the thu, nhung
+khong co dau hieu overfit nang de uu tien weight decay truoc bottleneck TN.
+
+H. Mot seed va chon checkpoint
+Config ghi seed=0 cho mot lan chay. Ket qua 97.71/97.73 chua biet do on dinh
+qua cac lan khoi tao. Validation duoc dung trong qua trinh chon epoch; khong
+nen tiep tuc chinh tham so tren cung validation ma khong co test set cuoi cung.
+
+3. CAC THU NGHIEM KHA THI, XEP THEO UU TIEN
+
+Buoc 0 — dong bang baseline truoc khi sua code
+- Giu checkpoint va config 16x16 goc; luu ket qua tren validation hien tai.
+- Neu checkpoint nay chua tung duoc danh gia tren official MNIST test, chay
+  test mot lan sau khi da chot model. Khong dung test de chinh tham so.
+- Tao confusion matrix tren validation theo lop va cac cap loi; khong suy ra
+  loi validation tu 701 loi trong train CSV.
+
+Thu 1 — thu 1 nhanh voi cung du lieu va split
+- Doi quantum_channels=3 thanh 1, giu 16x16, FQ core, readout, optimizer, seed,
+  split va lich train nhu baseline. Luu run vao thu muc rieng.
+- Muc dich: xem ba nhanh co dang bo sung nhau hay chi tang compute. Mot nhanh
+  co the giam thoi gian va so tham so, nhung co the giam accuracy; day la
+  ablation, khong phai khang dinh model nho se tot hon.
+
+Thu 2 — tao da dang khong gian cho ba nhanh
+- So sanh rieng baseline [row,row,row] voi [row,column,morton]. Code model da
+  ho tro spatial_orders, nhung can truyen cau hinh nay trong run moi.
+- Giu cac tham so khac nhu nhau. Morton duoc uu tien thu vi no nhom patch 2D;
+  ket qua validation moi quyet dinh co giu hay khong.
+
+Thu 3 — augmentation nhe tren day du 50k train
+- Warm-start tu checkpoint tot nhat 16x16, fine-tune 5-10 epoch tren toan bo
+  50k train, validation van bat bien va khong cap nhat trong validation.
+- Thu dich toi da 1-2 pixel va goc xoay nho (vi du ±5 do), ap dung tren anh
+  28x28 truoc resize 16x16; bat dau muc nhe.
+- Dung learning rate nho, vi du core 1e-5/readout 1e-4, early stop theo
+  validation loss va luu checkpoint moi trong thu muc moi. Day la diem khoi
+  dau de thu, khong phai LR da duoc chung minh toi uu.
+- Cac lan fine-tune chi tren 701 mau loi da cho train accuracy hard subset
+  tang nhung validation quanh 97.7% va val loss xau dan trong log nguoi dung gui.
+  Khong lap lai hard-only; neu can replay thi giu du lieu train binh thuong.
+
+Thu 4 — so sanh readout full9 voi ZZ
+- Giữ TN core, seed, du lieu va schedule; chi doi pair_correlators full9 sang zz.
+- Day la run khac architecture readout, nen khong the nap truc tiep trong so
+  Linear full9 sang lop ZZ co kich thuoc khac. Can train rieng va luu rieng.
+- So ca validation accuracy, validation loss, confusion matrix va runtime.
+
+Thu 5 — TN co bond noi thuc su
+- Neu muc tieu la giai quyet bottleneck thong tin, thiet ke TN/MPS co bond
+  chi=2 truoc, sau do chi=4 neu tai nguyen cho phep. Chi la mot thay doi kien
+  truc moi; khong coi chi la flag tren model hien tai.
+- Bao cao memory, runtime, va validation accuracy. Tang chi lam chi phi tang va
+  khong bao dam accuracy tang.
+
+Thu 6 — toi uu khoi tao/optimizer sau cac ablation
+- Chi sau khi biet branch/readout/spatial ordering nao co ich, thu rieng
+  init_scale 0.03 so voi 0.01 hoac AdamW voi weight_decay nho tren run moi.
+- Hien tai Adam va ReduceLROnPlateau da dua val loss xuong 0.0740; doi optimizer
+  khong phai huong dau tien co kha nang giai quyet mat tuong quan/TN bottleneck.
+
+4. QUY TAC SO SANH DE KHONG NHAM NGUYEN NHAN
+- Moi thuc nghiem chi thay mot nhom yeu to; luu config.json, seed, split seed,
+  checkpoint va history trong output folder moi.
+- Dung cung 50k train/10k validation, khong train tren validation; test chi
+  danh gia sau khi chot cau hinh.
+- Bao cao best validation accuracy, best validation loss, epoch cua tung metric,
+  train accuracy/loss, confusion matrix va thoi gian epoch.
+- Neu mot thay doi chi cai thien mot lan chay, lap lai it nhat voi mot seed nua
+  truoc khi ket luan. Muc tieu 99% la muc tieu thu nghiem, khong duoc bao dam.
+- Khong tang final_qubits hay kich thuoc anh va bond dimension cung luc. Code
+  hien tai khong co bond_dimension de tang; TN MPS co bond se can code rieng.
+- Tat ca training run chinh thuc van chi chay tren may AnyDesk theo forAI/plan.txt;
+  file phan tich nay chi de xuat thu tu cong viec, khong chay model tren may nay.
+
+KHUYEN NGHI CUOI
+Thu tu thuc te: (1) xac nhan test/confusion matrix baseline, (2) ablation 1
+branch, (3) ba branch row/column/Morton, (4) fine-tune augmentation nhe tren
+50k, (5) neu van chua du thi moi dau tu vao MPS co bond chi 2/4. AdamW va tang
+resolution khong phai thay doi dau tien nen lam.

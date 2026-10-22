@@ -1,0 +1,119 @@
+================================================================================
+HO SO DONG BO DU AN: TENSOR NETWORK / QUANTUM CNN TREN MNIST
+File tong hop kien thuc va tien do danh cho AI Agent tiep quan
+Ngay tao: 2026-10-21
+Thu muc goc: d:\data_system\tensornetwork_mnist
+================================================================================
+
+1. TONG QUAN DU AN VA MUC TIEU
+--------------------------------------------------------------------------------
+- Bai toan: Nhan dang chu so viet tay MNIST (10 lop, tu 0 den 9).
+- Muc tieu chinh: Nghien cuu, huan luyen va so sanh kha nang hoi tu cua 3 kien truc:
+  + Classical CNN: CNN truyen thong (Conv2d -> BatchNorm -> ReLU -> MaxPool -> Linear).
+  + Hybrid QCNN: Trich xuat dac trung co dien ket hop lop mach luong tu (Quantum circuit).
+  + Full Quantum QCNN: Mang no-ron luong tu / Tensor Network hoan toan xu ly tu anh vao.
+- Trong tam cao nhat hien tai la toi uu hoa va danh gia chuyen sau kien truc Full Quantum QCNN,
+  dac biet la hanh vi tren cac mau hoc kho (hard examples) va cac mau du doan sai (misclassified).
+
+2. QUY CHUAN DU LIEU (DATA PROTOCOL)
+--------------------------------------------------------------------------------
+- Tap du lieu: Chi dung tap MNIST Train chinh thuc (60.000 anh).
+- Phan chia co dinh (Deterministic Split):
+  + Seed phan chia: split_seed = 20260911 su dung torch.randperm(60000).
+  + 10.000 chi so dau tien: Tap Validation (danh gia khach quan).
+  + 50.000 chi so con lai: Tap Train (huan luyen).
+- Tien xu ly: transforms.ToTensor() chuyen pixel ve doan [0, 1]. KHONG dung data augmentation.
+- QUY TAC BAT KHA XAM PHAM:
+  + Tap MNIST Test goc (10.000 anh) khong duoc dong vao trong suot qua trinh tuning/thu nghiem.
+  + Toan bo 10.000 anh Validation tuyet doi khong bao gio duoc cap nhat gradient trong bat ky
+    pha huan luyen hoac fine-tune nao.
+
+3. KIEN TRUC FULL QUANTUM QCNN VA CHECKPOINT BASELINE
+--------------------------------------------------------------------------------
+- Kien truc chi tiet (FQ_ARCH):
+  + Kich thuoc anh dau vao: target_size = (16, 16), grayscale = True.
+  + So kenh luong tu: quantum_channels = 3.
+  + So qubit cuoi cung: final_qubits = 8.
+  + Loai entangling: strongly_entangling voi n_layers = 4, merge_rounds = 2.
+  + Readout: pauli_observable voi pair_correlators = "full9", init_scale = 0.01.
+  + Co che Re-uploading: Bo sung them 24 tham so reupload_scale (tong cong ~13.134 tham so).
+- Quy trinh huan luyen goc 3 giai doan (3-Phase Recipe):
+  + Phase 1 (Pretrain): Khoi tao tu dau, Adam lr = 2e-3, 20 epochs, batch 64, chon checkpoint
+    theo val_accuracy cao nhat.
+  + Phase 2 (Refine): Ke thua Phase 1 best, Adam moi lr = 2e-4, 5 epochs, chon checkpoint
+    theo val_accuracy cao nhat.
+  + Phase 3 (Re-upload): Nap Phase 2 best, them re-upload scale, Adam tach 2 nhom LR:
+    core_lr = 1e-4, readout_lr = 1e-3, ReduceLROnPlateau(factor=0.5, patience=3), toi da 60 epochs,
+    early stopping patience 10 theo val_loss thap nhat.
+- Ket qua Baseline dat duoc:
+  + Checkpoint: fq_phase3_reupload_best.pt (nam tai full_quantum/full_quantum/ va trong full_quantum.zip).
+  + Tai epoch 82: Validation loss = 0.074029, Validation accuracy = 97.71%.
+  + Train accuracy cuoi cung (epoch 85): ~98.60% (loss ~0.0492).
+
+4. PHAN TICH MAU KHO (SAMPLE ANALYSIS)
+--------------------------------------------------------------------------------
+- Cong cu:
+  + analyze_samples.py: Chay che do inference (khong dao ham) tren toan bo 50.000 train va
+    10.000 validation bang checkpoint fq_phase3_reupload_best.pt.
+    Xuat ra 2 file CSV: train_per_sample.csv va validation_per_sample.csv gom cac thong tin:
+    split, dataset_index, true_label, predicted_label, correct, confidence, true_class_probability,
+    margin, cross_entropy.
+  + visualize_samples.py: Ve bieu do danh gia (confusion matrix, accuracy tung chu so,
+    phan bo confidence vs cross-entropy) va trich xuat top mau sai nghiem trong nhat (worst samples).
+- Ket qua thong ke mau sai cua Baseline:
+  + Tap Train (50.000 mau): Co dung 701 mau mo hinh doan sai (accuracy 98.60%).
+  + Tap Validation (10.000 mau): Co dung 229 mau mo hinh doan sai (accuracy 97.71%).
+
+5. CAC HUONG THUC NGHIEM HIEN TAI (HARD-EXAMPLE EXPERIMENTS)
+--------------------------------------------------------------------------------
+Dua tren 701 mau Train bi doan sai, hien du an da xay dung 2 kich ban thuc nghiem:
+
+A. Kich ban 1: Fine-tune tu checkpoint co san (run_hard_example_finetune.py)
+   - Khoi tao: Warm-start tu fq_phase3_reupload_best.pt.
+   - Tap train: Chi gom 701 mau train sai (correct = 0).
+   - Optimizer: Adam voi core_lr = 1e-5, readout_lr = 1e-4.
+   - Batch size 32, toi da 20 epochs, early stopping patience 6 theo validation loss.
+   - Kiem tra chat che: dataset_index phai thuoc tap train, khong lap lai, dung nhan MNIST.
+   - Danh gia: Sau moi epoch danh gia tren toan bo 10.000 mau validation de so voi baseline.
+   - Rui ro can quan sat: Overfit 701 mau va hien tuong quen kien thuc cu (catastrophic forgetting).
+
+B. Kich ban 2: Huan luyen tu dau chi tren mau kho (run_hard_only_from_scratch.py)
+   - Khoi tao: Random weights tu dau, khong dung checkpoint pretrained.
+   - Tap train: Chi gom 701 mau kho trong suot ca 3 phase (Pretrain 20 ep -> Refine 5 ep -> Reupload 60 ep).
+   - Danh gia: Theo doi xem mo hinh chi tiep xuc voi cac ca kho tu dau thi hoi tu the nao
+     tren tap validation 10.000 mau.
+
+6. CAU TRUC VA Y NGHIA HE THONG FILE
+--------------------------------------------------------------------------------
+- Models (models/):
+  + classical_cnn.py: Mang CNN co dien tham chieu.
+  + hybrid_qcnn.py: Mang lai quantum-classical.
+  + full_quantum_qcnn.py: Mang quantum hoan toan (tensor network layer).
+  + reupload.py: Module mo rong re-uploading features.
+- Scripts chinh:
+  + run_convergence.py: Pipeline huan luyen va ve bieu do hoi tu tong the 3 model.
+  + analyze_samples.py: Inference tung mau, xuat CSV chi tiet.
+  + visualize_samples.py: Ve bieu do va hien thi anh loi tu CSV.
+  + run_hard_example_finetune.py: Fine-tune warm-start tren 701 mau train kho.
+  + run_hard_only_from_scratch.py: Train from-scratch 3 phase tren tap mau kho.
+- Checkpoints & Logs (*.pt, *.csv, *.json):
+  + *_best.pt: Luu trong so dat val loss/acc tot nhat (model_state_dict, epoch, row).
+  + *_last.pt: Luu trang thai de resume khi bi ngat (optimizer, scheduler, rng_state, stale...).
+  + history_*.csv: Ghi log chi tiet loss, accuracy, lr qua tung epoch.
+  + summary.json: Tom tat chi so cua epoch tot nhat va epoch cuoi.
+- Tai lieu huong dan:
+  + plan.txt: Ke hoach chi tiet, cac bien phap an toan du lieu va tieu chuan danh gia.
+  + validcheck.txt: Nhat ky kiem tra moi truong, dependency va huong dan chay Powershell.
+  + forAi.txt: (File nay) Ho so dong bo kien thuc du an cho AI.
+
+7. TIEU CHI DANH GIA VA QUYET DINH CHON MO HINH
+--------------------------------------------------------------------------------
+- Khong danh gia mo hinh tot hay xau dua tren Train Accuracy cua tap 701 mau (vi tap nay
+  chac chan se dat ~100% sau vai epoch).
+- Chi chap nhan mo hinh moi neu tren 10.000 mau Validation:
+  + Validation Accuracy vuot moc baseline 97.71%.
+  + Validation Loss nho hon hoac bang moc baseline 0.0740.
+  + So luong mau bi sai tren hard-validation (229 mau) giam ma khong lam hong cac lop khac.
+- Neu validation xau di do overfit, luon giu checkpoint goc fq_phase3_reupload_best.pt.
+================================================================================
+

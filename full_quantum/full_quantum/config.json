@@ -1,0 +1,206 @@
+{
+  "created_at": "2026-10-14T17:23:48+07:00",
+  "command": [
+    "run_convergence.py",
+    "--models",
+    "full_quantum",
+    "--device",
+    "cuda",
+    "--seed",
+    "0",
+    "--split-seed",
+    "20260911",
+    "--fq-batch-size",
+    "64",
+    "--fq-pretrain-epochs",
+    "20",
+    "--fq-pretrain-lr",
+    "2e-3",
+    "--fq-refine-epochs",
+    "5",
+    "--fq-refine-lr",
+    "2e-4",
+    "--fq-epochs",
+    "60",
+    "--fq-core-lr",
+    "1e-4",
+    "--fq-readout-lr",
+    "1e-3",
+    "--fq-patience",
+    "10",
+    "--fq-reupload",
+    "--out-dir",
+    "runs/full_quantum"
+  ],
+  "working_directory": "D:\\tensornetwork_mnist\\tensornetwork_mnist",
+  "output_directory": "runs\\full_quantum",
+  "effective_args": {
+    "models": [
+      "full_quantum"
+    ],
+    "out_dir": "runs/full_quantum",
+    "data_root": "mnist_data",
+    "device": "cuda",
+    "seed": 0,
+    "split_seed": 20260911,
+    "acc_ymin": 90.0,
+    "plot_only": false,
+    "resume": true,
+    "classical_epochs": 20,
+    "classical_batch_size": 128,
+    "classical_lr": 0.001,
+    "hybrid_epochs": 20,
+    "hybrid_batch_size": 128,
+    "hybrid_lr": 0.001,
+    "fq_batch_size": 64,
+    "fq_pretrain_epochs": 20,
+    "fq_pretrain_lr": 0.002,
+    "fq_refine_epochs": 5,
+    "fq_refine_lr": 0.0002,
+    "fq_epochs": 60,
+    "fq_core_lr": 0.0001,
+    "fq_readout_lr": 0.001,
+    "fq_patience": 10,
+    "fq_reupload": true,
+    "fq_warm_start": null,
+    "train_subset": null,
+    "val_subset": null,
+    "fake_data": false,
+    "smoke": false,
+    "classical": {
+      "epochs": 20,
+      "batch_size": 128,
+      "lr": 0.001
+    },
+    "hybrid": {
+      "epochs": 20,
+      "batch_size": 128,
+      "lr": 0.001
+    },
+    "full_quantum": {
+      "batch_size": 64,
+      "pretrain_epochs": 20,
+      "pretrain_lr": 0.002,
+      "refine_epochs": 5,
+      "refine_lr": 0.0002,
+      "epochs": 60,
+      "core_lr": 0.0001,
+      "readout_lr": 0.001,
+      "patience": 10,
+      "reupload": true
+    }
+  },
+  "data": {
+    "dataset": "MNIST train split",
+    "data_root": "mnist_data",
+    "split_seed": 20260911,
+    "train_size": "all remaining after validation",
+    "validation_size": 10000,
+    "test_set_used": false
+  },
+  "architectures": {
+    "classical": "ClassicalCNN(1, 10)",
+    "hybrid": {
+      "feature_size": [
+        8,
+        8
+      ],
+      "quantum_channels": 1,
+      "final_qubits": 8,
+      "readout_type": "pauli_observable",
+      "pair_correlators": "zz",
+      "init_scale": 0.01,
+      "merge_rounds": 2,
+      "entangling_type": "brickwall"
+    },
+    "full_quantum": {
+      "target_size": [
+        16,
+        16
+      ],
+      "grayscale": true,
+      "final_qubits": 8,
+      "readout_type": "pauli_observable",
+      "pair_correlators": "full9",
+      "init_scale": 0.01,
+      "merge_rounds": 2,
+      "entangling_type": "strongly_entangling",
+      "n_layers": 4,
+      "quantum_channels": 3
+    }
+  },
+  "training_plan": {
+    "full_quantum": [
+      {
+        "tag": "fq_phase1_pretrain",
+        "phase": "pretrain",
+        "optimizer": "Adam",
+        "lr": 0.002,
+        "epochs": 20,
+        "batch_size": 64,
+        "checkpoint_select": "val_acc"
+      },
+      {
+        "tag": "fq_phase2_refine",
+        "phase": "refine",
+        "optimizer": "Adam",
+        "lr": 0.0002,
+        "epochs": 5,
+        "batch_size": 64,
+        "checkpoint_select": "val_acc"
+      },
+      {
+        "tag": "fq_phase3_reupload",
+        "phase": "reupload",
+        "optimizer": "Adam + ReduceLROnPlateau",
+        "core_lr": 0.0001,
+        "readout_lr": 0.001,
+        "scheduler_factor": 0.5,
+        "scheduler_patience": 3,
+        "scheduler_min_lr": 1e-07,
+        "epochs": 60,
+        "batch_size": 64,
+        "early_stop_patience": 10,
+        "reupload": true,
+        "checkpoint_select": "val_loss"
+      }
+    ]
+  },
+  "resume": {
+    "enabled": true,
+    "disable_with": "--no-resume"
+  },
+  "plotting": {
+    "acc_ymin": 90.0,
+    "plot_only": false,
+    "outputs": [
+      "convergence_all.png",
+      "convergence_per_model.png",
+      "summary.json"
+    ]
+  },
+  "expected_outputs": {
+    "histories": [
+      "history_full_quantum.csv"
+    ],
+    "checkpoints": [
+      "<tag>_best.pt",
+      "<tag>_last.pt",
+      "<tag>_done.json"
+    ],
+    "config": "config.json"
+  },
+  "environment": {
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "torch": "2.5.1+cu121",
+    "cuda_available": true,
+    "cuda_version": "12.1",
+    "cudnn_version": 90100,
+    "requested_device": "cuda",
+    "cuda_device_count": 1,
+    "cuda_devices": [
+      "NVIDIA GeForce RTX 4090"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "models": [
+    "classical",
+    "hybrid",
+    "full_quantum"
+  ],
+  "out_dir": "runs/smoke_check",
+  "data_root": "mnist_data",
+  "device": "cpu",
+  "seed": 0,
+  "split_seed": 20260911,
+  "acc_ymin": 90.0,
+  "plot_only": false,
+  "resume": true,
+  "classical_epochs": 20,
+  "classical_batch_size": 128,
+  "classical_lr": 0.001,
+  "hybrid_epochs": 20,
+  "hybrid_batch_size": 128,
+  "hybrid_lr": 0.001,
+  "fq_batch_size": 64,
+  "fq_pretrain_epochs": 20,
+  "fq_pretrain_lr": 0.002,
+  "fq_refine_epochs": 5,
+  "fq_refine_lr": 0.0002,
+  "fq_epochs": 60,
+  "fq_core_lr": 0.0001,
+  "fq_readout_lr": 0.001,
+  "fq_patience": 10,
+  "fq_reupload": true,
+  "fq_warm_start": null,
+  "train_subset": 64,
+  "val_subset": 32,
+  "fake_data": true,
+  "smoke": true,
+  "classical": {
+    "epochs": 2,
+    "batch_size": 16,
+    "lr": 0.001
+  },
+  "hybrid": {
+    "epochs": 2,
+    "batch_size": 16,
+    "lr": 0.001
+  },
+  "full_quantum": {
+    "batch_size": 8,
+    "pretrain_epochs": 2,
+    "pretrain_lr": 0.002,
+    "refine_epochs": 1,
+    "refine_lr": 0.0002,
+    "epochs": 2,
+    "core_lr": 0.0001,
+    "readout_lr": 0.001,
+    "patience": 10,
+    "reupload": true
+  }
+}

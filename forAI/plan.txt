@@ -1,0 +1,293 @@
+﻿KE HOACH PHAN TICH MAU KHO VA FINE-TUNE FULL QUANTUM
+
+1. Trang thai va checkpoint goc
+- Script analyze_samples.py da duoc chuan bi de chay inference theo tung anh bang checkpoint full quantum da train; buoc nay khong cap nhat trong so.
+- Sau khi script chay xong, no tao:
+  + runs/full_quantum_sample_analysis/train_per_sample.csv (50.000 mau train)
+  + runs/full_quantum_sample_analysis/validation_per_sample.csv (10.000 mau validation)
+- Neu chua chay xong tren may train, hai CSV chua duoc tao day du. Cho den khi terminal in dong train/validation hoan tat moi copy CSV sang may lam viec nay.
+- Moi dong CSV co split, dataset_index, true_label, predicted_label, correct, confidence, true_class_probability, margin va cross_entropy. dataset_index la vi tri mau trong MNIST train goc, dung de tim lai dung anh.
+- Script uu tien checkpoint runs/full_quantum/fq_phase3_reupload_best.pt; neu khong co ban da giai nen thi no tim trong runs/full_quantum_v2, thu muc full_quantum hoac file ZIP o thu muc du an.
+- Checkpoint goc nen dung de warm-start la fq_phase3_reupload_best.pt (best theo validation loss), khong ghi de len file goc. Trong log, checkpoint nay dat val loss 0.0740291 va val accuracy 97.71% tai epoch 82. Train accuracy cuoi log la 98.582% tai epoch 85; day la metric tong hop, khong phai danh sach tung anh.
+
+2. Doc CSV va lap tap mau kho
+Sau khi co CSV:
+1) Mo train_per_sample.csv bang Excel/LibreOffice.
+2) Loc correct = 0 de lay cac mau train du doan sai. Sap xep true_class_probability tang dan hoac cross_entropy giam dan de xem mau mo hinh that su kho.
+3) Co the danh dau them mau dung nhung khong chac (confidence thap) va mau bien gioi (margin thap). Chon nguong sau khi xem phan phoi thuc te; khong tu dong xem moi mau confidence vua phai la mau kem.
+4) Dung dataset_index de luu danh sach mau kho, vi du hard_train_indices.csv. Bao cao so luong theo true_label va cap (true_label, predicted_label).
+5) Dung validation_per_sample.csv de danh gia ket qua theo cung tieu chi, tao danh sach hard-validation co dinh de so sanh truoc/sau. Tuyet doi khong dua cac index validation vao tap train/fine-tune.
+
+3. Chuan bi fine-tune
+1) Dung cung MNIST official train, ToTensor, split-seed 20260911 va dung source code/architecture da tao checkpoint.
+2) Giu nguyen checkpoint goc; tao hash SHA256 cua checkpoint va config. Luu moi lan fine-tune trong output directory moi.
+3) Checkpoint phai duoc giai nen ra file neu se nap bang --fq-warm-start cua run_convergence.py; tuy chon khac la bo sung cho training script doc checkpoint truc tiep trong ZIP.
+4) Training pipeline can nhan danh sach dataset_index tu CSV. --train-subset hien tai chi chon N mau dau cua train split, khong loc theo danh sach ID CSV, nen chua the su dung truc tiep cho hard-example training.
+5) Truoc khi train, pipeline phai doi chieu cac index voi train split duoc tao lai bang seed 20260911 va tu choi neu co index thuoc validation.
+
+4. Cac thu nghiem fine-tune de xuat
+Muc tieu la tap trung sua loi kho, nhung van giu kha nang tren cac mau con lai.
+- Baseline goc: chay inference/metric tren validation va hard-validation truoc fine-tune de co moc so sanh.
+- Thu nghiem A (uu tien): fine-tune tren toan bo train split, dung weighted sampler de mau sai/kho co tan suat lay mau cao hon. Chay hai muc trong so mau kho 2x va 3x.
+- Thu nghiem B: fine-tune tren tap mau kho thuoc train split ket hop 25-50% mau dung lay ngau nhien tu train split. Tranh hard-only de giam overfit va quen cac mau de.
+- Warm-start tu runs/full_quantum/fq_phase3_reupload_best.pt. Neu checkpoint nam trong ZIP, giai nen rieng checkpoint nay truoc khi truyen duong dan vao run_convergence.py; khong can train lai tu dau.
+- Khoi dau voi Adam, batch size 64 neu VRAM cho phep; lr core 1e-5 den 3e-5, lr readout 1e-4 den 3e-4; 5-15 epoch, early stopping 3-5 epoch theo validation loss. Giam LR neu validation loss khong con giam.
+- Tao output rieng nhu runs/full_quantum_hard_ft_v1 va ..._v2. Khong bat resume tu output cu va khong ghi de checkpoint goc.
+- Muc tieu tham khao cho moi run: loi train duoc uu tien giam, nhung khong de validation loss/accuracy tong the xau ro rang.
+
+5. Danh gia va quyet dinh giu checkpoint
+- Chay lai inference tung mau tren cung 10.000 validation sau fine-tune.
+- So sanh checkpoint goc va fine-tuned: validation accuracy, cross-entropy/loss, macro-F1, confusion matrix, per-class recall, so mau sai va so mau sai tren hard-validation.
+- Lap danh sach mau duoc sua va mau moi bi sai; kiem tra theo nhan that va cap nham lan.
+- Chi chon checkpoint theo validation. Khong dung MNIST test de chinh tham so; neu can bao cao ket qua cuoi, danh gia test mot lan sau khi chot.
+- Chi giu checkpoint fine-tuned neu loi tren hard-validation giam ma hieu nang validation tong the khong suy giam dang ke. Luu config, seed, sampler/weights, checkpoint va hash cung bao cao.
+
+6. Lenh phan tich mau
+Chay tren may co MNIST va checkpoint/ZIP:
+python .\analyze_samples.py
+
+Mac dinh script tao ca train_per_sample.csv va validation_per_sample.csv trong runs/full_quantum_sample_analysis. Neu chi can validation:
+python .\analyze_samples.py --splits validation
+
+7. Buoc tiep theo sau khi CSV san sang
+- Copy train_per_sample.csv va validation_per_sample.csv ve cung workspace voi source code va MNIST.
+- Tu train_per_sample.csv loc correct=0 va cac mau bien gioi theo tieu chi da chot; xuat dataset_index vao hard_train_indices.csv.
+- Tu validation_per_sample.csv tao hard-validation co dinh, chi de danh gia.
+- Tiep theo can tao/sua training script de doc hard_train_indices.csv va weighted sampler, nap checkpoint goc, train fine-tune va ghi checkpoint vao output directory moi.
+- Chay cac thu nghiem A/B, danh gia lai validation theo muc 5, chon checkpoint tot nhat truoc khi can nhac test set.
+
+8. Ky vong loi ich va rui ro khi fine-tune mau kho
+- Fine-tune co the giam loi tren cac mau train kho va co the cai thien hard-validation neu cac mau nay the hien quy luat chung ma model chua hoc du. Muc cai thien khong the bao dam truoc; can xac nhan tren validation chua tung dua vao gradient.
+- Neu chi train lap lai mot tap hard nho, model co the hoc thuoc cac anh do (overfit), tang do tu tin khong dung, hoac quen cac mau train de (catastrophic forgetting). Khi do hard subset co the tot len nhung validation tong the, cac lop khac, hoac cac mau goc lai kem di.
+- Cac mau sai co the la anh mơ ho, gan nhan khong chuan, hoac nhan that su kho phan biet. Kiem tra mot so mau va cap (nhan that, nhan du doan) truoc khi tang trong so; khong sua nhan chi de model du doan theo mong muon.
+- Thiet ke giam rui ro: warm-start checkpoint best; giu nguyen validation; uu tien weighted sampling tren toan bo train voi hard examples duoc lay thuong hon (thu 2x, 3x), hoac hard train ket hop mau train binh thuong; khong train hard-only trong run dau.
+- Dung learning rate thap, it epoch, early stopping theo validation loss; luu checkpoint moi o thu muc rieng. Neu validation loss xau di lien tuc hoac accuracy tong the sut ro, dung run va quay lai checkpoint goc.
+- So sanh it nhat: (1) checkpoint goc, (2) fine-tune toan train voi hard weight 2x, (3) fine-tune voi hard weight 3x hoac hard + mau binh thuong. Dung cung validation split va cung cach tinh metric cho tat ca.
+- Chi chap nhan model moi neu loi/ty le sai tren hard-validation giam va validation tong the khong suy giam dang ke; theo doi them per-class recall, confusion matrix, macro-F1, cross-entropy va cac mau truoc day dung nhung sau fine-tune bi sai.
+- Neu hard-validation tot hon nhung validation tong the giam, day la trade-off chua chac co loi: khong thay checkpoint goc; ghi ro thay doi theo lop va xac dinh uu tien ung dung truoc khi chon.
+- Khong dung official MNIST test de chon sampler, learning rate hay checkpoint. Chi danh gia test mot lan sau khi da chot cau hinh cuoi neu can ket qua bao cao.
+
+9. Cap nhat thuc te: fine-tune cac mau train bi du doan sai (2026-10-21)
+Muc nay cap nhat trang thai moi nhat va thay the cac buoc "can tao training script" / "buoc tiep theo" o muc 3, 4 va 7. Thu nghiem hien tai la hard-example fine-tune tren cac mau TRAIN sai; chua phai weighted sampling tren toan bo train split.
+
+9.1. Ket qua phan tich mau ban dau
+- visualize_samples.py doc hai CSV theo tung mau, dung dataset_index de hien thi anh MNIST va tao summary.
+- Ket qua trong cac anh da xem:
+  + Train: 50.000 mau, accuracy 98.60%, co 701 mau du doan sai.
+  + Validation: 10.000 mau, accuracy 97.71%, co 229 mau du doan sai.
+- train_worst_samples.png va validation_worst_samples.png hien thi toi da 30 mau co cross entropy cao nhat trong nhom du doan sai. So mau trong tieu de la tong so mau sai, khong phai so anh dang duoc hien thi.
+- Hai CSV dau vao nam mac dinh tai runs/full_quantum_sample_analysis/train_per_sample.csv va validation_per_sample.csv.
+- Chinh sach tach du lieu: chi 701 mau sai trong CSV train duoc phep dua vao fine-tune. 229 mau sai validation va toan bo 10.000 mau validation khong duoc dua vao gradient.
+
+9.2. Script fine-tune da tao
+- File: run_hard_example_finetune.py.
+- Khoi tao model tu checkpoint full quantum/reupload da train, mac dinh fq_phase3_reupload_best.pt. Script doc checkpoint de nap trong so; khong sua hay ghi de file checkpoint goc.
+- Doc train_per_sample.csv, chon dong correct=0, va kiem tra:
+  + dataset_index thuoc train split duoc tao bang split-seed 20260911.
+  + Khong co dataset_index lap.
+  + true_label trong CSV khop nhan cua MNIST tai index do.
+  + Neu mot dieu kien khong dung, script dung va bao loi de tranh train nham du lieu.
+- Dung MNIST train goc va transform ToTensor, khong augmentation. Model/architecture giu dung cau hinh FullQuantumQCNN reupload da dung khi phan tich.
+- Chien luoc ban dau chi train tren 701 mau sai da early stop va khong cai thien ro validation (xem muc 11); khong dung checkpoint cua lan hard-only lam dau vao cho run moi.
+- Script hien tai dung weighted sampler tren toan bo 50.000 train indices. Nhom hard lay tu correct=0 (701 mau theo CSV); nhom normal la cac mau correct=1 trong cung CSV.
+- Mac dinh --normal-per-hard 2: moi epoch lay ngau nhien co hoan lai 2,103 vi tri tu train split; ky vong khoang 701 hard va 1,402 normal. Pool normal la toan bo mau train ban dau duoc checkpoint goc du doan dung, nen nhom normal duoc rut lai ngau nhien qua cac epoch thay vi co dinh 1,400 anh.
+- Script kiem tra CSV la train split, moi dataset_index chi xuat hien mot lan, CSV co du tat ca index train va nhan true_label khop voi MNIST. Validation 10.000 mau van tach rieng, chi dung de danh gia va early stopping.
+- Moi epoch danh gia tren toan bo validation split 10.000 mau, khong cap nhat trong so tren validation. Validation accuracy/loss vi vay co the so sanh truc tiep voi moc truoc fine-tune 97.71% va validation_summary.png cu.
+- Optimizer Adam voi hai nhom learning rate: core 1e-5, readout 1e-4. Mac dinh 20 epoch toi da, batch 32, early stopping patience 6 theo validation loss. Checkpoint tot nhat duoc chon theo validation loss thap nhat.
+- Luu y nguy co: 701 mau bi lap lai qua nhieu epoch nen co the overfit hard subset. Theo doi validation accuracy va loss; neu validation xau di, giu checkpoint goc. Train curve trong convergence chart cua run nay tinh tren 701 mau hard, khong phai toan bo 50.000 mau train ban dau.
+
+9.3. Lenh chay PowerShell
+Chay tu thu muc goc project, sau khi da co CSV, MNIST va checkpoint:
+
+python .\run_hard_example_finetune.py --mistakes-csv .\runs\full_quantum_sample_analysis\train_per_sample.csv --checkpoint .\runs\full_quantum\fq_phase3_reupload_best.pt --data-root .\mnist_data --device cuda --out-dir .\runs\full_quantum_hard_finetune_replay_v1 --epochs 20 --batch-size 32 --normal-per-hard 2 --core-lr 1e-5 --readout-lr 1e-4 --patience 6
+
+- Neu checkpoint nam o noi khac, thay gia tri --checkpoint bang duong dan thuc. Neu duong dan mac dinh khong ton tai, script thu tim checkpoint cung ten trong runs/full_quantum, runs/full_quantum_v2 va full_quantum.
+- May khong co CUDA: doi --device cuda thanh --device cpu (se cham hon nhieu).
+- Lenh tren dung output directory moi full_quantum_hard_finetune_replay_v1 de giu nguyen ca checkpoint goc va artifact hard-only; khong xoa/ghi de runs/full_quantum.
+
+9.4. Artifact sau fine-tune
+Run hard-only cu nam trong runs/full_quantum_hard_finetune/. Run replay tiep theo dung runs/full_quantum_hard_finetune_replay_v1/ de giu nguyen artifact cu va doc lap voi checkpoint goc.
+- hard_finetune_best.pt: trong so tai epoch co validation loss tot nhat; day la checkpoint nen dung neu ket qua duoc chap nhan.
+- hard_finetune_last.pt: trong so tai epoch cuoi cung, kem optimizer state va lich su epoch. Script hien tai chua co co che resume tu file nay; chay lai se bat dau tu checkpoint goc.
+- history_full_quantum.csv: train/validation loss, accuracy, learning rate, thoi gian moi epoch.
+- convergence_all.png va convergence_per_model.png: hai bieu do convergence tao bang ham plot_all hien co trong run_convergence.py.
+- summary.json: tom tat epoch co validation loss thap nhat va metric cuoi.
+- finetune_config.json: ghi source checkpoint/CSV, seed, so hard, kich thuoc normal pool, ti le replay va so mau du kien moi epoch.
+- Trong convergence chart hard-only cu, train series la metric tren hard subset 701 mau. Trong replay run moi, train series la metric tren 2,103 luot lay mau/epoch (ky vong 701 hard va 1,402 normal), khong phai full 50.000 mau mot lan moi epoch; khong so truc tiep voi baseline train accuracy 98.60%.
+
+9.5. Cach ket luan co cai thien hay khong
+1) So validation_accuracy cua epoch tot nhat/summary.json voi baseline 97.71% (va validation_summary.png cu).
+2) So validation_loss cua checkpoint fine-tune tot nhat voi baseline loss tu ket qua goc. Cung tap validation va cung checkpoint baseline moi dam bao so sanh cong bang.
+3) Khong ket luan model tot hon chi dua vao train accuracy tren 701 mau; day la tap da duoc chon vi model tung sai.
+4) Neu validation accuracy tang nhung loss tang manh, kiem tra confidence va cac loi moi; neu validation giam ro, tiep tuc dung checkpoint goc.
+5) De xem model fine-tune con sai nhung mau nao, chay lai analyze_samples.py voi --checkpoint .\runs\full_quantum_hard_finetune\hard_finetune_best.pt va --out-dir .\runs\full_quantum_hard_finetune\sample_analysis, sau do chay visualize_samples.py voi cac CSV moi va --out-dir .\runs\full_quantum_hard_finetune\sample_analysis\plots. Viec nay tao danh sach loi va anh sau fine-tune de doi chieu voi baseline.
+6) Validation da duoc dung de early stopping/chon checkpoint trong thu nghiem nay; khong dung MNIST test. Chi dung test mot lan neu can ket qua bao cao sau khi da chot mo hinh va tham so.
+
+11. Thu nghiem tiep theo: fine-tune co replay mau train dung
+Ly do: hard-only run hien tai khong dat muc tieu. Sau 6 epoch, val accuracy chi dao dong 97.70-97.72% (baseline 97.71%), trong khi val loss tang tu 0.074095 o epoch 1 len 0.074813 o epoch 6; baseline val loss la 0.074029. Early stopping xay ra sau epoch 7 neu epoch 7 tiep tuc khong cai thien loss. Khong chon hard-only checkpoint de thay checkpoint goc.
+
+Thiet ke run replay da duoc cai vao run_hard_example_finetune.py:
+- Nguon khoi tao la checkpoint goc fq_phase3_reupload_best.pt va CSV train_per_sample.csv duoc tao boi chinh checkpoint do. Khong warm-start tu hard_finetune_best.pt/last.pt cua lan hard-only.
+- Moi epoch lay mau co hoan lai tu ca train split 50.000 mau bang WeightedRandomSampler. Trong so cua moi mau hard duoc tinh de nhom hard co xac suat lay mau tong the 1/(1 + normal_per_hard); voi mac dinh normal_per_hard=2, ti le ky vong la hard:normal = 1:2.
+- So luot lay mau moi epoch mac dinh la 3 * 701 = 2,103 (batch 32, khoang 66 batch). Trong do ky vong 701 hard draw va 1,402 normal draw. Cac mau normal duoc rut tu toan bo cac mau correct=1, co hoan lai va duoc rut moi epoch; day khong phai danh sach 1,402 mau co dinh.
+- Tham so --normal-per-hard co the tang/giam muc replay mau dung; vi du 3 thi ky vong 1 hard : 3 normal. Giu validation nguyen 10.000 mau; loss validation van la tieu chi chon checkpoint va early stopping (toi da 20 epoch, patience 6).
+- Command chinh thuc tren may AnyDesk nam tai muc 10.2 va dung output rieng runs/full_quantum_hard_finetune_replay_v1. Khong chay tren workspace nay.
+- Artifact moi them finetune_config.json; history/summary/plots/checkpoints nam trong output directory moi. So sanh validation loss/accuracy voi baseline va hard-only run; neu khong cai thien thi giu checkpoint goc.
+
+10. Moi truong chay chinh thuc: may tinh ket noi qua AnyDesk
+QUY DINH: chi chay cac training script (run_hard_example_finetune.py, run_hard_only_from_scratch.py va run_convergence.py) tren may AnyDesk hien trong anh IDE. Khong chay training tren workspace/may Codex hien tai. May AnyDesk la may dang co venv, CUDA, du lieu MNIST va cac artifact training; workspace hien tai chi dung de sua/luu source va plan. Neu copy code sang may AnyDesk thi can dam bao file moi nhat da duoc copy truoc khi chay.
+QUY DINH CAP NHAT: moi khi nguoi dung gui anh AnyDesk moi, luon doi chieu anh moi nhat va cap nhat cay thu muc, ten file, trang thai artifact, duong dan terminal/venv va lenh chay trong muc nay. Thong tin tu anh moi nhat thay the thong tin cu neu co khac biet; khong mac dinh cay thu muc/duong dan truoc day van con dung. Neu anh moi khong hien ro mot thu muc/file, ghi ro la chua xac nhan thay vi tu suy dien no van ton tai.
+
+10.1. Cay thu muc nhin thay tren may AnyDesk
+Thu muc project trong terminal: D:\tensornetwork_mnist\tensornetwork_mnist
+PowerShell hien dang dung venv: (venv), va lenh python duoc goi ngay tai thu muc project.
+
+D:\tensornetwork_mnist\tensornetwork_mnist\
+|-- venv\                         # Python environment tren may nay
+|-- mnist_data\                   # MNIST local
+|-- models\                       # model FullQuantumQCNN va cac layer
+|-- data\                         # tien xu ly/encoding
+|-- runs\
+|   |-- full_quantum\             # checkpoint full quantum goc, khong sua/ghi de
+|   |-- full_quantum_v2\          # ket qua/checkpoint variant khac
+|   |-- full_quantum_sample_analysis\
+|   |   |-- train_per_sample.csv  # CSV 50.000 train; 701 dong sai theo anh da xem
+|   |   |-- validation_per_sample.csv # CSV validation 10.000; 229 dong sai
+|   |   `-- plots\                # 4 anh summary/worst cua baseline
+|   |-- full_quantum_hard_finetune\ # artifact hard-only da chay, giu nguyen
+|   `-- full_quantum_hard_finetune_replay_v1\ # output rieng cho run hard+normal tiep theo
+|       |-- hard_finetune_best.pt
+|       |-- hard_finetune_last.pt
+|       |-- history_full_quantum.csv
+|       |-- finetune_config.json
+|       |-- convergence_all.png
+|       |-- convergence_per_model.png
+|       `-- summary.json
+|-- analyze_samples.py
+|-- visualize_samples.py
+|-- run_convergence.py
+|-- run_hard_example_finetune.py # script chi duoc chay tren may AnyDesk
+|-- run_hard_only_from_scratch.py # model random moi, bat dau tu phase 1
+|-- requirements.txt
+`-- README.md
+
+Ghi chu ve anh chup Explorer: runs/full_quantum va runs/full_quantum_v2 dang dong; ten checkpoint ben trong runs/full_quantum khong doc duoc tu anh. Truyen dung ten/duong dan file checkpoint dang co tren may do. Mac dinh script dung runs/full_quantum/fq_phase3_reupload_best.pt; neu ten file khac, sua --checkpoint cho dung. Thu muc full_quantum_hard_finetune trong anh da co artifact cua mot lan chay; neu chay lai va muon giu nguyen ket qua cu, dat --out-dir sang ten moi, vi du runs/full_quantum_hard_finetune_v2.
+
+10.2. Lenh chay tren AnyDesk
+Mo PowerShell terminal trong VS Code tren may AnyDesk, dam bao prompt dang o D:\tensornetwork_mnist\tensornetwork_mnist va dau prompt co (venv). Kiem tra nhanh duong dan/input:
+
+Test-Path .\runs\full_quantum_sample_analysis\train_per_sample.csv
+Get-ChildItem .\runs\full_quantum -Filter *.pt
+Test-Path .\mnist_data
+
+Lenh cho yeu cau hien tai: train model random moi tren chinh tap hard 701 mau, chay ca 3 phase. Script nay khong nap checkpoint nao:
+
+python .\run_hard_only_from_scratch.py --hard-csv .\runs\full_quantum_sample_analysis\train_per_sample.csv --data-root .\mnist_data --device cuda --out-dir .\runs\full_quantum_hard_from_scratch_v1 --batch-size 32 --phase1-epochs 20 --phase2-epochs 5 --phase3-epochs 60 --phase3-patience 10
+
+Run nay chi doc train_per_sample.csv de lay cac dong correct=0 va doc MNIST; khong doc checkpoint goc. No danh gia tren day du 10.000 mau validation moi epoch. Output nam rieng trong runs/full_quantum_hard_from_scratch_v1, khong ghi de checkpoint goc, hard-only fine-tune hay replay fine-tune. Neu chay lai, dung output directory moi.
+
+Truoc khi chay that, xac nhan:
+- Prompt terminal nam trong thu muc project tren may AnyDesk (khong phai terminal workspace nay).
+- (venv) dang hien tren prompt va torch.cuda.is_available() la True neu dung --device cuda.
+- train_per_sample.csv la CSV tu dung checkpoint goc nay; file chua 50.000 dong va 701 dong correct=0 nhu anh baseline.
+- train_per_sample.csv phai duoc tao boi model/checkpoint baseline ma nguoi dung muon dinh nghia tap "sida"; script doi chieu day du index va nhan MNIST.
+- Neu bat ky input nao nam sai cho, sua duong dan tren may AnyDesk truoc khi bat dau; khong copy MNIST/CSV/checkpoint sang may khac de chay thay the.
+
+12. Yeu cau moi nhat: model moi tinh, train tu phase 1 chi voi 701 mau hard
+Yeu cau nay khac ca hai thu nghiem truoc. run_hard_example_finetune.py la fine-tune tu checkpoint da train; replay_v1 la fine-tune tu checkpoint da train co them mau dung. Yeu cau hien tai la khoi tao FullQuantumQCNN tu trong so ngau nhien va KHONG nap checkpoint da train nao, sau do chay quy trinh phase 1 -> phase 2 -> phase 3, nhung tap gradient chi gom dung cac mau train co correct=0 trong CSV (701 mau theo ket qua hien tai).
+
+Script rieng da tao: run_hard_only_from_scratch.py.
+- Phase 1 pretrain: model khong reupload, Adam lr=2e-3, mac dinh 20 epoch; giu checkpoint phase co validation accuracy cao nhat.
+- Phase 2 refine: tiep tuc tu best phase 1, tao Adam moi lr=2e-4, mac dinh 5 epoch; giu checkpoint phase co validation accuracy cao nhat.
+- Phase 3 reupload: them reupload parameters, warm-start tu best phase 2 (day la noi bo trong cung run, khong phai checkpoint cu), Adam core lr=1e-4/readout lr=1e-3, ReduceLROnPlateau, toi da 60 epoch va early stopping patience 10 theo validation loss.
+- Tat ca ba phase chi cap nhat trong so tren cung 701 mau hard; validation 10.000 mau chi danh gia/chon checkpoint va khong duoc train. MNIST test khong su dung.
+- Output rieng runs/full_quantum_hard_from_scratch_v1/: phase1_pretrain_best/last.pt, phase2_refine_best/last.pt, phase3_reupload_best/last.pt, history_full_quantum.csv, from_scratch_config.json, convergence_all.png, convergence_per_model.png va summary.json.
+- So sanh ket qua phase3 tren validation voi baseline. Vi 701 mau duoc chon chinh vi model cu sai tren chung va khong dai dien day du 10 lop, khong ky vong mac dinh dat 99%; nguy co overfit cao. Neu validation rat thap thi day la ket qua de tra loi thu nghiem "chi 701 hard samples co du de hoc tu dau khong", khong dung checkpoint nay thay baseline.
+- Chi chay tren may AnyDesk. Uoc tinh theo log hard-only truoc (khoang 220-234 giay de danh gia/train mot epoch voi 10.000 validation), toi da 85 epoch co the mat hon 5 gio neu phase 3 khong early-stop; thoi gian thuc te phu thuoc GPU va validation speed. Khong bat buoc chay het neu muon giam budget: co the dat --phase3-epochs 20, nhung plan mac dinh giu dung so epoch goc.
+- Lenh thuc hien la lenh trong muc 10.2. Truyen --hard-csv tu CSV baseline goc; khong truyen --checkpoint vi model phai bat dau random.
+
+12.1. Pham vi tinh nang va han che cua script from-scratch
+- run_convergence.py dai hon vi la runner tong quat cho classical, hybrid va full quantum; co nhieu CLI/config, smoke/fake-data, resume va thong tin moi truong. Khong so sanh muc do hoan tat chi bang so dong code.
+- run_hard_only_from_scratch.py la script chuyen dung cho mot thu nghiem FullQuantumQCNN tren hard subset. Cac tinh nang can thiet da co: doc/kiem tra train CSV day du, doi chieu split va nhan MNIST, khoi tao trong so ngau nhien (khong nap checkpoint), chay phase 1/2/3, danh gia validation 10.000 mau, luu best/last checkpoint theo phase, history CSV, config JSON va convergence plots.
+- Hien script co luu checkpoint phase*_last.pt moi epoch nhung CHUA co logic doc lai checkpoint de resume. Neu tien trinh bi ngat, chay lai se khoi dong lai tu phase 1 va ghi lai artifact trong output directory. Khong bat dau run dai nhieu gio neu can kha nang tiep tuc sau khi may/nguyen trinh bi ngat; can bo sung va kiem tra resume truoc.
+- Script chua co fake-data/smoke mode, chua ghi run_time.json/done marker va chua tu dong xac nhan CUDA memory truoc run; day la cac tinh nang phu cua runner goc, khong lam thay doi thiet ke du lieu/model cua thu nghiem nay.
+
+13. Thu nghiem FullQuantumQCNN 32x32 tren toan bo MNIST train split
+Muc tieu: tao model ngau nhien moi, giu kien truc FullQuantumQCNN 3 nhanh va quy trinh 3 phase, nhung dua anh MNIST 28x28 vao TN duoi dang 32x32. Khong nap checkpoint tu cac run 16x16/hard-example. Day la run moi, output tach rieng.
+
+13.1. Tien xu ly va kich thuoc tensor network
+- Tao folder source rieng `full_quantum_32x32/`, script chinh `full_quantum_32x32/run_32x32.py`. Folder nay co ban sao day du cac module Python can de tu train.
+- MNIST 28x28 duoc center-pad them 2 pixel den moi canh bang gia tri 0 de thanh 32x32; khong resize va khong crop. Model ma hoa 1,024 site moi anh.
+- `final_qubits=8`: 1,024 / 8 = 128 = 2^7, do do TN co 7 block gop/pooling, so voi 5 block khi dau vao 16x16. Cach nay hop le voi rang buoc luy thua 2 cua QuantumTNCore.
+- Chi model 32x32 chon `preprocess_mode="pad"`. Mac dinh `preprocess_mode="resize"` giu nguyen hanh vi cac run/model cu, khong lam doi checkpoint/ket qua 16x16.
+- Chi phi moi epoch tang dang ke: dau vao co 4 lan site so voi 16x16, lai train ca 50.000 train va danh gia 10.000 validation. Tranh xem day la run chac chan hoan tat trong mot dem; neu bi ngat, chay lai dung lenh va dung output folder cu de resume tu epoch da luu.
+
+13.2. Du lieu, phase, metric va artifact
+- Dung dung split deterministic seed 20260911 tren MNIST train: 50.000 train, 10.000 validation; khong dung MNIST test. Validation chi de theo doi/chon checkpoint, khong cap nhat gradient.
+- Phase 1: model random init, khong reupload, Adam lr=2e-3, mac dinh 20 epoch, chon checkpoint theo validation accuracy cao nhat.
+- Phase 2: tiep tuc tu checkpoint tot nhat phase 1, optimizer Adam moi lr=2e-4, mac dinh 5 epoch, chon theo validation accuracy cao nhat.
+- Phase 3: them reupload, tiep tuc tu phase 2, Adam core lr=1e-4/readout lr=1e-3 va ReduceLROnPlateau(factor=0.5, patience=3), toi da 60 epoch, early stop patience 10 theo validation loss; luu checkpoint validation loss tot nhat.
+- Script tai cac helper `make_loaders`, `run_phase`, `plot_all`, `seed_all`, `write_history` tu ban sao `full_quantum_32x32/training_utils.py` (copy tu run_convergence.py). `run_phase` luu last checkpoint moi epoch va tu resume; cac phase co tag rieng.
+- Output mac dinh: `full_quantum_32x32/runs/full_quantum_32x32/`, gom `config_32x32.json`, `history_full_quantum.csv`, `fq32_phase*_best.pt`, `fq32_phase*_last.pt`, done JSON cho moi phase, `convergence_all.png`, `convergence_per_model.png` va summary do `plot_all` tao.
+- Khong dung chung output folder voi baseline `runs/full_quantum`, hard-only, fine-tune hay replay. Neu muon run bat dau lai tu random, phai dat output directory moi (hoac dung `--no-resume` va chu dong quan ly artifact cu); lenh tiep tuc run bi ngat thi giu nguyen folder va khong them `--no-resume`.
+
+13.3. Chi chay tren may AnyDesk va lenh PowerShell
+QUY DINH: chi chay training nay tren may AnyDesk tai `D:\tensornetwork_mnist\tensornetwork_mnist`; khong chay train tren workspace Codex. Chi can copy nguyen folder `full_quantum_32x32/` moi nhat vao project AnyDesk. Script import `models/`, `data/`, va `training_utils.py` tu ben trong folder nay; khong phu thuoc code Python tu project root. Van can Python environment co PyTorch, torchvision, NumPy, Matplotlib va MNIST tai `mnist_data` (hoac de torchvision tu tai).
+
+Cay thu muc bo sung tren AnyDesk:
+`D:\tensornetwork_mnist\tensornetwork_mnist\`
+|-- full_quantum_32x32\
+|   |-- run_32x32.py
+|   |-- training_utils.py
+|   |-- models\                 # ban sao FullQuantumQCNN/TN core/reupload/readout
+|   |-- data\                   # ban sao encoding va preprocessing 32x32
+|   |-- requirements.txt
+|   |-- README.md
+|   `-- runs\full_quantum_32x32\  # output tach rieng cua run 32x32
+|-- mnist_data\                   # MNIST local; neu chua co se duoc download
+`-- venv\                         # moi truong Python tren AnyDesk
+
+Khong can copy rieng `data\preprocessing.py`, `models\full_quantum_qcnn.py` hay `run_convergence.py` de chay ban self-contained; cac ban sao da nam trong folder 32x32. `requirements.txt` liet ke torch, torchvision, numpy va matplotlib; tren AnyDesk co the dung venv da cai san.
+
+Mo PowerShell trong VS Code AnyDesk, prompt phai o project root va hien `(venv)`. Kiem tra CUDA:
+`python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"`
+
+Lenh train day du 3 phase (giu batch 16 de han che VRAM; cung mot output path de co the resume neu qua dem chua xong):
+`python .\full_quantum_32x32\run_32x32.py --data-root .\mnist_data --device cuda --out-dir .\full_quantum_32x32\runs\full_quantum_32x32 --batch-size 16 --phase1-epochs 20 --phase2-epochs 5 --phase3-epochs 60 --phase3-patience 10`
+
+Neu CUDA het bo nho, dung Ctrl+C de dung sau khi epoch hien tai da ghi checkpoint (tot nhat tranh dong dot ngot), sau do chay lai cung lenh voi `--batch-size 8` va cung output folder; tuy nhien thay batch size lam thay doi dong hoc va chi nen lam khi bat buoc. Can uu tien so sanh khoa hoc thi chay lai bang batch size co dinh tu dau trong output folder moi.
+
+Ket qua 32x32 chi duoc xem la tot hon neu validation accuracy/loss tren cung split seed cai thien so voi baseline 16x16 (97.71% accuracy, val loss khoang 0.0740). Ghi nhan ca chi phi thoi gian va VRAM; khong ky vong dat 99% chi vi tang do phan giai. Sau khi run hoan tat, cap nhat plan theo anh AnyDesk moi nhat truoc khi ghi nhan artifact/thay doi trang thai.
+
+14. Thu nghiem 16x16 FullQuantumQCNN: giu 3 phase, them MLP readout va augmentation
+Trang thai quyet dinh: chay mot run moi tu random initialization voi day du 3 phase giong recipe FullQuantum 16x16 goc. Chi thay hai yeu to trong thiet ke: readout Pauli linear thanh MLP, va them RandomAffine nhe vao anh TRAIN. Khong thay augmentation bang Fourier feature mapping trong run nay.
+
+14.1. Vi sao khong dung Fourier feature de thay augmentation
+- Data augmentation bien doi truc tiep anh train (o day la xoay/dich nhe), giup mo hinh thay cac bien the hinh hoc co cung nhan. Validation khong augmentation. Xoay chi nen nhe vi cac chu so nhu 6/9 co the bi nham neu bien doi qua lon.
+- Fourier feature mapping kinh dien ma hoa toa do (x,y,...) bang cac dac trung sin/cos de MLP hoc ham theo toa do va chi tiet tan so cao; no khong tu sinh anh xoay va khong tu tao tinh bat bien voi goc xoay. Tham chieu: Tancik et al., “Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains”, https://arxiv.org/abs/2006.10739.
+- Bài toan hien tai la phan loai MNIST tu tensor pixel 16x16, khong phai implicit coordinate regression/NeRF. Them Fourier positional features se can thiet ke lai cach ma hoa moi site/pixel hoac dau vao model; day la mot bien doi kien truc va co the lam tang kich thuoc/tinh toan, khong phai mot thay the truc tiep cho RandomAffine.
+- Neu muon nghien cuu Fourier sau nay, tao mot experiment folder/run rieng, giu cung split, seed va recipe 3 phase; so sanh voi baseline va run augmentation nay. Khong chen Fourier vao run hien tai de tranh khong biet thay doi nao tao khac biet.
+- Khong co bao dam augmentation hay MLP se tang accuracy. Muc tieu la do tren cung 10k validation; khong dung test de chinh tham so.
+
+14.2. Cac chi tiet giu nguyen so voi recipe goc
+- Model FullQuantumQCNN 16x16, grayscale, 3 quantum channels, 8 final qubits, strongly-entangling core 4 layers, merge_rounds=2, full9 Pauli features; reupload chi duoc them o phase 3.
+- MNIST official train split: 50.000 train va 10.000 validation, split seed 20260911; validation khong cap nhat gradient, test set khong su dung.
+- Phase 1: khoi tao model tu trong so random; Adam 2e-3, batch 64, 20 epoch; chon state co validation accuracy tot nhat.
+- Phase 2: tiep tuc state tot nhat phase 1, khoi tao Adam moi lr=2e-4, batch 64, 5 epoch; tiep tuc chon theo validation accuracy.
+- Phase 3: them reupload va tiep tuc tu state tot nhat phase 2; Adam core lr=1e-4, readout lr=1e-3; ReduceLROnPlateau factor=0.5, patience=3, min_lr=1e-7; toi da 60 epoch, early stop sau 10 epoch khong cai thien validation loss; chon checkpoint phase 3 theo validation loss.
+- Seed khoi tao mac dinh 0, giong lenh baseline trong forAI/validcheck.txt; augmentation random nen run moi se khong co cung tung minibatch pixel nhu run khong augmentation.
+- Toan bo 3 phase dung cung train dataset co RandomAffine(degrees=8, translate=0.05, fill=0) + ToTensor. Validation chi ToTensor. Vi augmentation duoc ap dung ca phase 1-3, day la mot yeu to thay doi duoc kiem soat ro.
+
+14.3. Hai thay doi duoc thu nghiem
+- Readout moi cho moi nhanh: Linear(276,256) -> LayerNorm(256) -> GELU -> Dropout(0.1) -> Linear(256,10). Tensor-network core va cach ma hoa anh van duoc giu.
+- Augmentation train: RandomAffine degrees=8 va translate=0.05; validation khong bien doi.
+- MLP lam tang dang ke so tham so readout va tang nang luc phan loai classical o head. Vi vay neu accuracy tang, ket qua khong the quy het rieng cho augmentation hay rieng cho MLP; muon tach nguyen nhan can chay them ablation (MLP only, augmentation only) tren cung protocol.
+
+14.4. Script, output va cach chay tren AnyDesk
+- Folder tu chua code: `full_quantum_16x16_mlp_aug/`; script: `run_mlp_aug.py`; README cung folder co huong dan. Copy ca folder nay vao project AnyDesk ben canh `venv/`, `mnist_data/`, `runs/`.
+- Script da duoc chinh de khong nap checkpoint baseline. Phase 1 khoi tao random; phase 2/3 chi nap checkpoint tot nhat cua phase truoc trong cung run.
+- Output mac dinh rieng: `full_quantum_16x16_mlp_aug/runs/mlp_aug_3phase/`. Luu config JSON, split index CSV, history tong va history/checkpoint tot nhat moi phase, summary, plot va final best checkpoint. Output path phai moi/rong khi bat dau run; script tu choi neu thu muc da co file.
+- Log moi epoch in tag phase, epoch hien tai/tong epoch, train loss/accuracy, validation loss/accuracy, LR, seconds va dau `*best`. Phase 1 va 2 co mot Adam LR chung; phase 3 co LR rieng core/readout. Phase 3 co the early-stop nhu recipe goc, nen tong so epoch toi da la 85 nhung thuc te co the it hon.
+- Lenh PowerShell tu bat ky thu muc nao (duong dan project AnyDesk can khop voi cay thu muc hien tai; neu AnyDesk root doi thi cap nhat theo anh moi nhat):
+`D:\tensornetwork_mnist\tensornetwork_mnist\venv\Scripts\python.exe D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\run_mlp_aug.py --device cuda --out-dir D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\runs\mlp_aug_3phase`
+- Chi train script nay tren may AnyDesk, khong tren workspace Codex. Trien khai nay chua duoc chay; can copy source moi nhat len AnyDesk truoc khi bat dau.

@@ -1,0 +1,10 @@
+{
+  "full_quantum": {
+    "epochs": 85,
+    "best_val_loss": 0.07402908366322518,
+    "best_val_epoch": 82,
+    "val_accuracy_at_best_loss": 0.9771,
+    "final_train_loss": 0.049245325197577475,
+    "final_val_loss": 0.07451332676112651
+  }
+}

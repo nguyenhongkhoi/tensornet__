@@ -1,0 +1,75 @@
+KE HOACH: PORT MACH MULTI-CLASS QCNN SANG TENSOR NETWORK
+Cap nhat: 2026-10-22
+
+MUC TIEU
+Tao mot model 10 lop MNIST ma toan bo bo phan trich xuat dac trung va phan loai nam trong mach QCNN; mo phong mach do bang tensor network (TN) de train tren PyTorch/GPU. KHONG them CNN frontend. CNN thuần 99% cua project chi lam moc tham chieu, khong duoc dua feature CNN vao QCNN trong thi nghiem nay.
+
+Nguon duoc hieu la bai “Multi-Class Quantum Convolutional Neural Networks” cua Mordacci, Ferrari, Amoretti (arXiv:2404.12741) va repository ma tac gia lien ket. Nguon paper: https://arxiv.org/abs/2404.12741
+Code tham chieu: https://github.com/qslab-unipr/qcnn
+
+1. CAN PHAN BIET: MODEL HIEN TAI VA MACH TRONG BAI
+
+Model FullQuantumQCNN hien tai trong `full_quantum_32x32/`:
+- Anh 28x28 duoc pad thanh 32x32; moi pixel thanh mot qubit/site product-state qua RY encoding, tong 1.024 site.
+- QuantumTNCore ghep cac cap site ke nhau bang mot gate conv va mot gate pool, trace bot mot site; lam 7 block de con 8 qubit.
+- Sau do co strongly-entangling core 8 qubit; readout Pauli full9 + Linear 10 lop.
+- Co 3 nhanh TN doc lap; hien tai ca 3 nhanh mac dinh dung cung row ordering.
+- Day la mot mach QCNN/TN tu thiet ke; no KHONG phai mạch trong paper duoc port nguyen ban.
+
+Mach 10-lop trong code tham chieu paper:
+- Bat dau voi 8 qubit, khong phai 1.024 qubit/site.
+- Nhánh amplitude: PCA anh 28x28 thanh vector 256 chieu, sau do amplitude-encode vao 8 qubit. Nhánh angle trong repo dung 8 thanh phan PCA de angle-encode; de port lan dau nen chon amplitude vi ket qua paper bao cao nhánh nay cao hon trong bang doi encoding.
+- Co circuit F1 tien xu ly/pre-convolution, circuit convolution F2 (SU(4), 15 tham so cho mot block) tren cac cap ke nhau theo ca luot chan/le, va pooling circuit hoc duoc.
+- Cac pooling chon cap qubit cu the: sau pooling dau con 6 wire hoat dong; sau pooling thu hai con 4; convolution tiep tren 4 wire.
+- Cho 10 lop, do paper/code lay probability tren cac wire [0,2,4,6], tuong ung 4 qubit do va 16 outcome co the; class 0..9 duoc anh xa theo thu tu ket qua trong code paper. Khong thay readout Pauli full9 + Linear cua project vao ban port trung thanh.
+- Paper co classical preprocessing PCA va classical optimizer Adam; “khong CNN frontend” khong co nghia la khong co buoc preprocessing/optimizer co dien.
+
+2. NHUNG GI CAN PORT VAO TN
+
+Tao implementation rieng, de vi du `full_quantum_qcnn_paper_tn/` hoac module `models/paper_qcnn_tn.py`; khong sua de lam mat model cu/checkpoint cu. Khi port phai giu dung do thi mach va chia se tham so:
+
+A. Data/encoding
+1. Doc MNIST grayscale 28x28, flatten 784 pixel va fit PCA(256) CHI tren cac mau train.
+2. Dung PCA da fit de transform validation; chi transform test sau khi chot model. Khong fit PCA tren validation/test de tranh leakage.
+3. Chuan hoa amplitude vector theo L2 va dat vao 8-qubit amplitude state. Khong thay amplitude encoding bang 1 RY cho tung pixel; hai encoding tao feature map va mach khac nhau.
+4. Neu TN backend khong tao amplitude state dung chuan xuat phat, can bieu dien 256 amplitude thanh tensor rank-8 co moi bond vat ly dim=2. Kiem tra chuan hoa ||x||=1 va phan bo dau am truoc khi train.
+
+B. Tensor-network circuit
+1. Bieu dien moi gate 1-qubit/2-qubit thanh tensor voi cac chi so vao/ra; noi cac wire thanh bond va contraction theo topo circuit.
+2. Port F1 dung dung gate/parameter sharing tu `unitary.py` tham chieu; F1 khong phai CNN va cung khong duoc bo qua.
+3. Port F2 la ansatz SU(4) dung trong source (15 parameter angles), ap dung tren cac cap theo thu tu chan va le nhu circuit goc.
+4. Port pooling CRZ -> X -> CRX va cach bo/trace wire dung nhu source. Dung dung tap wire sau moi pool; khong thay bang QuantumConvPoolBlock hien tai neu no lam doi topo/ansatz.
+5. Sau cac convolution/pooling, doc probability tren wire [0,2,4,6] theo thu tu output cua PennyLane. Map 10 digit theo dung class-index mapping. Dung loss tren 10 class probability theo code tham chieu; khong doi sang Pauli readout/Linear khi dang reproduction.
+6. Dung autograd qua tensor contraction cho tham so gate. Neu can contraction xap xi/truncation, ghi ro bond dimension va sai so; ban reproduction dau tien nen contraction chinh xac neu kha thi.
+
+C. Quan he voi code dang co
+- `QuantumTNCore` hien tai duoc xay quanh dau vao product states tung site; moi block hoc mot LearnedUnitary2Q conv/pool chung cho cac cap va giam so site mot nua. Sau TN core co StronglyEntanglingCore va Pauli readout.
+- Paper circuit co 8-qubit amplitude state PCA, F1 tien xu ly, SU(4) F2 va pooling/active-wire pattern rieng; do do chi thay input size/FQ_ARCH khong the tao thanh paper architecture.
+- Can viet core/mach paper rieng de bieu dien state amplitude co the entangle va cac wire pattern chinh xac. Co the dung lai ham luu checkpoint, history, plotting, split va training-loop neu khong lam thay doi circuit.
+- Ten output/checkpoint rieng, vi state_dict va tham so khong tuong thich checkpoint `full_quantum`/`full_quantum_32x32` cu.
+
+3. TRAINING VA SO SANH CONG BANG
+
+Thiet lap reproducing-first:
+- 10 lop, dung toan bo tap train cua MNIST; de duy tri protocol project, tach 50.000 train / 10.000 validation voi split seed 20260911. Giữ MNIST official test rieng den khi chot model.
+- Adam, lr=0.01, batch=64, seed=43 la setting duoc README cua repo paper ghi; paper/code co sai khac ve epoch: README dat default 2 epoch, trong khi bang ket qua mo ta 10 epoch. Ghi ro so epoch va luu config; khong tu dong xem hai setting la mot. Chay reproduction theo code truoc, sau do moi tune so epoch/LR o run moi.
+- Bài paper dung MNIST 4/6/8/10 class va doi chieu voi CNN rat nho, parameter-matched. Khi muc tieu la 99% tren project, chay ca all-10-class tren split validation hien tai va giu CNN thuần 99% lam benchmark thuc te; khong dua con so CNN nho trong paper thanh baseline cua project.
+- Theo paper/source, 10-class QCNN co ket qua bao cao 57% va CNN doi chieu 38% trong setting so sanh duoc mo ta; day la outperformance tuong doi, KHONG phai 99%. Vi vay paper cung cap ansatz de port/chay thu, khong dam bao dat muc tieu 99%.
+- Chon checkpoint bang validation loss/accuracy, ghi confusion matrix va accuracy tung digit, dac biet cac cap nham 4<->9, 3<->5, 9<->7. Khong dung validation de update model; khong xem test trong qua trinh tune.
+
+4. CAC BUOC LAM DE XAC NHAN PORT DUNG
+
+1. Giu source code goc paper ben canh implementation TN moi de doi chieu gate order, wire order, parameter count, encoding va output index.
+2. Truoc khi train MNIST dai, chon vai input va mot bo tham so gate co dinh: so sanh probability/logit cua PennyLane circuit voi TN contraction. Sai lech phai nam trong tolerance so hoc da dat truoc.
+3. So sanh gradient cua mot loss nho theo tung tham so gate giua PennyLane va PyTorch autograd; neu output trung nhung gradient sai thi training TN se khong reproduce paper.
+4. Kiem tra mot batch co output shape 10, probability hop le, loss huu han, va optimizer lam loss co the giam tren mot batch nho.
+5. Sau cac kiem tra tren moi chay full 50k/10k. Luu config, best/last checkpoint, history va phan tich loi trong thu muc run rieng.
+
+Day la cac buoc de nghi, khong phai code da duoc port hay da chay. Khong chay training tren workspace; run chinh thuc chi tren may AnyDesk theo quy dinh trong `plan.txt`.
+
+5. NGUON
+
+- Paper: Mordacci, Ferrari, Amoretti, “Multi-Class Quantum Convolutional Neural Networks”, https://arxiv.org/abs/2404.12741
+- Source repo lien ket tu paper, co README ve MNIST/PCA/encoding/F1/F2/pooling/measurement/training: https://github.com/qslab-unipr/qcnn
+- README source repo ghi n_qubit=8, amplitude encoding, 10 lop, seed=43, batch=64, Adam lr=0.01; amplitude preprocessing dung PCA 256 feature; angle encoding dung PCA 8 feature.
+- Paper/source code so sanh QCNN/CNN tren nhieu so lop. Ket qua phu thuoc manh vao class count, so epoch, encoding va baseline; khong dien giai “QCNN outperform CNN” thanh “QCNN chac chan dat 99%”.

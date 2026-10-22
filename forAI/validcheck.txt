@@ -1,0 +1,196 @@
+KIEM TRA README.md VA HUONG DAN CHAY
+Ngay kiem tra: 2026-10-14
+Thu muc du an: D:\data_system\tensornetwork_mnist
+
+1. Ghi chu ve README
+- Trong thu muc hien tai KHONG co file README.txt, chi co README.md.
+- Da doc README.md va doi chieu voi run_convergence.py.
+- README.md bi loi font tieng Viet khi xem trong terminal, nhung cac lenh va ten file dau ra van doc duoc.
+
+2. Ket luan nhanh ve 3 yeu cau
+
+Yeu cau 1: Luu ket qua chay
+- DAT.
+- Script ghi history_<model>.csv cho tung model:
+  + history_classical.csv
+  + history_hybrid.csv
+  + history_full_quantum.csv
+- Moi file history co cac cot:
+  epoch, phase, train_loss, train_accuracy, validation_loss, validation_accuracy, lr_core, lr_readout, epoch_seconds.
+- Script ghi summary.json de tom tat ket qua tot nhat theo validation loss.
+- Script ghi config.json de luu cau hinh/lua chon command line da chay.
+
+Yeu cau 2: Luu du trong so va tham so model
+- DAT ve trong so model.
+- Moi checkpoint *_best.pt co model_state_dict, epoch, row.
+- Moi checkpoint *_last.pt co model_state_dict, optimizer_state_dict, scheduler_state_dict neu co, epoch, row, best, stale, rows, shuffle_rng.
+- config.json luu cac tham so chay nhu seed, split-seed, batch size, learning rate, epoch, patience, model duoc chay, out-dir...
+- Luu y: kien truc model nam trong source code models/ va cac hang so trong run_convergence.py. De tai lap day du, can giu lai ca source code + config.json + checkpoint .pt.
+
+Yeu cau 3: Ve hinh so sanh
+- DAT.
+- Script tao 2 hinh:
+  + convergence_all.png: so sanh cac model tren cung truc, gom loss va accuracy.
+  + convergence_per_model.png: moi model mot khung rieng, danh dau validation loss nho nhat.
+- Lenh --plot-only se ve lai tu cac file history_*.csv da co, khong train lai.
+
+3. Trang thai test tren may hien tai
+
+Da thu chay lenh smoke:
+python run_convergence.py --smoke --fake-data --device cpu --out-dir runs/smoke_check
+
+Ket qua: CHUA CHAY DUOC vi thieu torchvision.
+Loi gap:
+ModuleNotFoundError: No module named 'torchvision'
+
+Kiem tra pip cho thay:
+- torch da co.
+- numpy da co.
+- matplotlib da co.
+- torchvision chua co.
+
+Viec can lam truoc khi chay:
+python -m pip install -r requirements.txt
+
+Neu van loi torchvision do Python qua moi/khong hop ban torch, nen tao moi moi truong Python 3.10 hoac 3.11 roi cai lai requirements.
+
+4. Huong dan chay chi tiet tren Windows PowerShell
+
+Buoc 1: Mo PowerShell tai thu muc du an
+cd D:\data_system\tensornetwork_mnist
+
+Buoc 2: Kiem tra Python
+python --version
+python -m pip --version
+
+Buoc 3: Cai thu vien
+python -m pip install -r requirements.txt
+
+Buoc 4: Kiem tra nhanh pipeline, khong can GPU, khong tai MNIST
+python run_convergence.py --smoke --fake-data --device cpu --out-dir runs/smoke
+
+Sau khi chay xong smoke, kiem tra cac file dau ra:
+Get-ChildItem runs\smoke
+
+Can thay cac file/dang file sau:
+- config.json
+- summary.json
+- convergence_all.png
+- convergence_per_model.png
+- history_classical.csv
+- history_hybrid.csv
+- history_full_quantum.csv
+- classical_best.pt, classical_last.pt, classical_done.json
+- hybrid_best.pt, hybrid_last.pt, hybrid_done.json
+- fq_phase1_pretrain_best.pt, fq_phase1_pretrain_last.pt, fq_phase1_pretrain_done.json
+- fq_phase2_refine_best.pt, fq_phase2_refine_last.pt, fq_phase2_refine_done.json
+- fq_phase3_reupload_best.pt, fq_phase3_reupload_last.pt, fq_phase3_reupload_done.json
+
+Lenh kiem tra nhanh tat ca file quan trong:
+Test-Path runs\smoke\config.json
+Test-Path runs\smoke\summary.json
+Test-Path runs\smoke\convergence_all.png
+Test-Path runs\smoke\convergence_per_model.png
+Get-ChildItem runs\smoke\history_*.csv
+Get-ChildItem runs\smoke\*.pt
+
+Buoc 5: Chay full quantum dung setting trong README
+Lenh nay can GPU CUDA va co the rat lau:
+python run_convergence.py --models full_quantum --device cuda --seed 0 --split-seed 20260911 --fq-batch-size 64 --fq-pretrain-epochs 20 --fq-pretrain-lr 2e-3 --fq-refine-epochs 5 --fq-refine-lr 2e-4 --fq-epochs 60 --fq-core-lr 1e-4 --fq-readout-lr 1e-3 --fq-patience 10 --fq-reupload --out-dir runs/convergence
+
+Neu khong co GPU, co the doi --device cpu nhung full quantum se rat cham:
+python run_convergence.py --models full_quantum --device cpu --seed 0 --split-seed 20260911 --fq-batch-size 64 --fq-pretrain-epochs 20 --fq-pretrain-lr 2e-3 --fq-refine-epochs 5 --fq-refine-lr 2e-4 --fq-epochs 60 --fq-core-lr 1e-4 --fq-readout-lr 1e-3 --fq-patience 10 --fq-reupload --out-dir runs/convergence
+
+Buoc 6: Chay ca 3 model de so sanh
+Lenh nay se train classical, hybrid, full_quantum roi ve hinh:
+python run_convergence.py --device cuda --out-dir runs/convergence
+
+Neu muon chay CPU:
+python run_convergence.py --device cpu --out-dir runs/convergence
+
+Buoc 7: Ve lai hinh tu history da co, khong train lai
+python run_convergence.py --plot-only --out-dir runs/convergence
+
+Neu muon truc accuracy bat dau tu 0:
+python run_convergence.py --plot-only --out-dir runs/convergence --acc-ymin 0
+
+Buoc 8: Resume khi bi ngat
+- Neu dang chay bi dung giua chung, chay lai dung lenh cu.
+- Mac dinh script se resume tu *_last.pt va bo qua phase da co *_done.json.
+- Neu muon bo qua checkpoint cu va train lai, them --no-resume.
+
+Vi du train lai smoke tu dau:
+python run_convergence.py --smoke --fake-data --device cpu --out-dir runs/smoke --no-resume
+
+5. Cach doc va xac nhan ket qua sau khi chay
+
+Kiem tra ket qua tung epoch:
+Get-Content runs\convergence\history_full_quantum.csv -TotalCount 5
+
+Kiem tra tom tat:
+Get-Content runs\convergence\summary.json
+
+Kiem tra hinh da tao:
+Test-Path runs\convergence\convergence_all.png
+Test-Path runs\convergence\convergence_per_model.png
+
+Kiem tra checkpoint da luu:
+Get-ChildItem runs\convergence\*.pt
+
+Kiem tra config da luu:
+Get-Content runs\convergence\config.json
+
+6. Y nghia cac file dau ra chinh
+
+config.json
+- Luu tham so command line va cau hinh train.
+
+history_<model>.csv
+- Luu ket qua theo tung epoch: train loss/accuracy, validation loss/accuracy, learning rate, thoi gian epoch.
+
+summary.json
+- Luu ket qua tong hop, gom best_val_loss, best_val_epoch, val_accuracy_at_best_loss, final_train_loss, final_val_loss.
+
+*_best.pt
+- Luu trong so model tot nhat theo tieu chi cua phase.
+- Classical/hybrid va phase 3 full quantum chon theo validation loss nho nhat.
+- Phase 1/2 full quantum chon theo validation accuracy cao nhat.
+
+*_last.pt
+- Luu trang thai moi nhat de resume, gom model, optimizer, scheduler neu co, lich su rows va RNG shuffle.
+
+convergence_all.png
+- Hinh so sanh train/validation loss va accuracy cua cac model tren cung do thi.
+
+convergence_per_model.png
+- Hinh loss rieng tung model, co danh dau validation loss nho nhat.
+
+7. Ket luan cuoi
+
+Theo code run_convergence.py, cac lenh trong README.md dap ung du 3 viec:
+1. Co luu ket qua chay vao CSV/JSON.
+2. Co luu trong so model va trang thai resume vao checkpoint .pt; config.json luu tham so chay.
+3. Co ve hinh so sanh convergence_all.png va convergence_per_model.png.
+
+Can cai du dependency, dac biet torchvision, truoc khi chay tren may hien tai.
+
+8. Cap nhat code theo yeu cau moi
+
+Da sua run_convergence.py de:
+- In thu muc output va vi tri config.json ngay khi bat dau run.
+- In thoi gian tung epoch nhu cu.
+- In them tong thoi gian cua moi phase, vi du:
+  [fq_phase3_reupload] finished 57 epoch(s) in 15h 20m 10s (55210.0s) reason=early_stop_patience
+- In them tong thoi gian cua moi model, vi du:
+  [full_quantum] total time 16h 05m 31s (57931.2s)
+- In tong thoi gian toan bo run, vi du:
+  [run] total time 16h 08m 02s (58082.4s)
+- Ghi config.json chi tiet hon vao --out-dir, gom:
+  command da chay, working directory, output directory, effective_args, data split, architecture, training_plan, resume, plotting, expected_outputs, environment Python/Torch/CUDA.
+- Ghi run_time.json sau khi hoan tat, gom total_seconds, total_duration, completed_at.
+- Ghi them phase_seconds va phase_duration vao tung file *_done.json.
+
+Da kiem tra logic/cau truc bang:
+python -m py_compile run_convergence.py
+
+Ket qua: qua kiem tra cu phap, khong chay train.
