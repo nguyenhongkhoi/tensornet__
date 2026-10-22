@@ -72,7 +72,7 @@ def make_loaders(args: argparse.Namespace, device: torch.device):
         Subset(validation_base, validation_indices), batch_size=args.batch_size,
         shuffle=False, num_workers=0, pin_memory=pin,
     )
-    return train_loader, validation_loader, train_indices, validation_indices
+    return train_loader, validation_loader, generator, train_indices, validation_indices
 
 
 def build_model(device: torch.device, reupload: bool = False) -> FullQuantumQCNN:
@@ -100,8 +100,7 @@ def run_epoch(model, loader, device, optimizer=None, progress_label: str | None 
     loss_sum, correct, seen = 0.0, 0, 0
     started = time.perf_counter()
     total_batches = len(loader)
-    context = torch.enable_grad() if training else torch.inference_mode()
-    with context:
+    with torch.set_grad_enabled(training):
         for batch_index, (images, labels) in enumerate(loader, start=1):
             if progress_label:
                 print(
@@ -173,15 +172,111 @@ def save_plots(rows: list[dict], out_dir: Path) -> None:
 def save_atomic(payload: dict, path: Path) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     torch.save(payload, temporary)
-    temporary.replace(path)
+    for attempt in range(60):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 59:
+                raise
+            time.sleep(0.5)
+
+
+def write_json(path: Path, value) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, indent=2, default=str), encoding="utf-8")
+    for attempt in range(60):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 59:
+                raise
+            time.sleep(0.5)
+
+
+def write_phase_history(rows: list[dict], path: Path) -> None:
+    if not rows:
+        return
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _normalized_config(config: dict) -> dict:
+    normalized = json.loads(json.dumps(config, sort_keys=True, default=str))
+    normalized.pop("output_directory", None)
+    args = normalized.get("args", {})
+    args.pop("out_dir", None)
+    args.pop("no_resume", None)
+    return normalized
+
+
+def validate_run_directory(out_dir: Path, config: dict, *, resume: bool) -> None:
+    config_path = out_dir / "config_mlp_aug.json"
+    artifact_patterns = (
+        "fq_mlp_aug_*_best.pt", "fq_mlp_aug_*_last.pt", "fq_mlp_aug_*_done.json",
+        "*_history.csv", "history_full_quantum_mlp_aug.csv", "summary_mlp_aug.json",
+        "full_quantum_mlp_aug_best.pt",
+    )
+    artifacts = [path for pattern in artifact_patterns for path in out_dir.glob(pattern)]
+    if artifacts and not config_path.exists():
+        raise RuntimeError(
+            f"Run artifacts exist without {config_path.name}; choose a new --out-dir."
+        )
+    if artifacts and not resume:
+        raise RuntimeError(
+            f"Run artifacts already exist in {out_dir}; choose a new --out-dir."
+        )
+    if artifacts and config_path.exists():
+        previous = json.loads(config_path.read_text(encoding="utf-8"))
+        if _normalized_config(previous) != _normalized_config(config):
+            raise RuntimeError(
+                "Saved run configuration differs from the requested settings. "
+                "Keep the original arguments to resume, or choose a new --out-dir."
+            )
 
 
 def train_phase(*, tag, phase, model, optimizer, scheduler, train_loader, validation_loader,
-                epochs, select, patience, offset, out_dir, device, rows):
-    best = float("-inf") if select == "val_accuracy" else float("inf")
-    stale, phase_rows = 0, []
+                generator, epochs, select, patience, offset, out_dir, device, rows, resume=True):
+    done_path = out_dir / f"{tag}_done.json"
+    last_path = out_dir / f"{tag}_last.pt"
     best_path = out_dir / f"{tag}_best.pt"
-    for epoch in range(1, epochs + 1):
+    if resume and done_path.exists() and best_path.exists():
+        done = json.loads(done_path.read_text(encoding="utf-8"))
+        phase_rows = done["rows"]
+        rows.extend(phase_rows)
+        write_history(rows, out_dir)
+        write_phase_history(phase_rows, out_dir / f"{tag}_history.csv")
+        print(f"[{tag}] already complete ({len(phase_rows)} epochs) - skipping", flush=True)
+        best_state = torch.load(best_path, map_location="cpu", weights_only=False)["model_state_dict"]
+        return phase_rows, best_state
+
+    sign = 1.0 if select == "val_loss" else -1.0
+    best, stale, phase_rows, start_epoch = float("inf"), 0, [], 1
+    if resume and last_path.exists():
+        checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if scheduler is not None and checkpoint.get("scheduler_state_dict"):
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        best = checkpoint["best"]
+        stale = checkpoint["stale"]
+        phase_rows = checkpoint["rows"]
+        start_epoch = checkpoint["epoch"] + 1
+        generator.set_state(checkpoint["shuffle_rng"])
+        if checkpoint.get("torch_rng_state") is not None:
+            torch.set_rng_state(checkpoint["torch_rng_state"])
+        if torch.cuda.is_available() and checkpoint.get("cuda_rng_state_all") is not None:
+            torch.cuda.set_rng_state_all(checkpoint["cuda_rng_state_all"])
+        rows.extend(phase_rows)
+        write_history(rows, out_dir)
+        write_phase_history(phase_rows, out_dir / f"{tag}_history.csv")
+        print(f"[{tag}] resumed after epoch {checkpoint['epoch']}", flush=True)
+
+    reason = "epoch_budget"
+    for epoch in range(start_epoch, epochs + 1):
         started = time.perf_counter()
         train_loss, train_acc = run_epoch(
             model, train_loader, device, optimizer,
@@ -199,47 +294,64 @@ def train_phase(*, tag, phase, model, optimizer, scheduler, train_loader, valida
         rows.append(row)
         phase_rows.append(row)
         metric = val_acc if select == "val_accuracy" else val_loss
-        improved = metric > best + 1e-7 if select == "val_accuracy" else metric < best - 1e-7
+        signed_metric = sign * metric
+        improved = signed_metric < best - 1e-7
         if improved:
-            best, stale = metric, 0
+            best, stale = signed_metric, 0
             save_atomic({"model_state_dict": model.state_dict(), "epoch": epoch,
                          "row": row, "phase": phase}, best_path)
         else:
             stale += 1
         if scheduler is not None:
             scheduler.step(val_loss)
+        current_state = {"model_state_dict": model.state_dict(), "epoch": epoch,
+                         "row": row}
+        save_atomic({**current_state,
+                     "optimizer_state_dict": optimizer.state_dict(),
+                     "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+                     "best": best, "stale": stale, "rows": phase_rows,
+                     "shuffle_rng": generator.get_state(),
+                     "torch_rng_state": torch.get_rng_state(),
+                     "cuda_rng_state_all": torch.cuda.get_rng_state_all()
+                     if torch.cuda.is_available() else None}, last_path)
+        write_history(rows, out_dir)
+        write_phase_history(phase_rows, out_dir / f"{tag}_history.csv")
         print(f"[{tag}] epoch {epoch:3d}/{epochs} train {train_loss:.4f}/{train_acc:.4f} "
               f"val {val_loss:.4f}/{val_acc:.4f} lr {lr_core:.2e}/{lr_readout:.2e} "
               f"{row['epoch_seconds']:.0f}s{'  *best' if improved else ''}", flush=True)
         if patience is not None and stale >= patience:
+            reason = "early_stop_patience"
             print(f"[{tag}] early stop after {patience} epochs without improvement.", flush=True)
             break
-    with (out_dir / f"{tag}_history.csv").open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(phase_rows[0]))
-        writer.writeheader()
-        writer.writerows(phase_rows)
+    write_json(done_path, {"rows": phase_rows, "stop_reason": reason,
+                           "best_metric": sign * best, "select": select})
     best_state = torch.load(best_path, map_location="cpu", weights_only=False)["model_state_dict"]
     return phase_rows, best_state
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--models", nargs="+", choices=["full_quantum"], default=["full_quantum"],
+                        help="Accepted for compatibility with run_convergence.py; this script trains full_quantum only.")
     parser.add_argument("--data-root", default=str(PROJECT_ROOT / "mnist_data"))
     parser.add_argument("--out-dir", default=str(ROOT / "runs" / "mlp_aug_3phase"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--split-seed", type=int, default=20260911)
-    parser.add_argument("--phase1-epochs", type=int, default=20)
-    parser.add_argument("--phase2-epochs", type=int, default=5)
-    parser.add_argument("--phase3-epochs", type=int, default=60)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--phase1-lr", type=float, default=2e-3)
-    parser.add_argument("--phase2-lr", type=float, default=2e-4)
-    parser.add_argument("--core-lr", type=float, default=1e-4)
-    parser.add_argument("--readout-lr", type=float, default=1e-3)
-    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--phase1-epochs", "--fq-pretrain-epochs", dest="phase1_epochs", type=int, default=20)
+    parser.add_argument("--phase2-epochs", "--fq-refine-epochs", dest="phase2_epochs", type=int, default=5)
+    parser.add_argument("--phase3-epochs", "--fq-epochs", dest="phase3_epochs", type=int, default=60)
+    parser.add_argument("--batch-size", "--fq-batch-size", dest="batch_size", type=int, default=64)
+    parser.add_argument("--phase1-lr", "--fq-pretrain-lr", dest="phase1_lr", type=float, default=2e-3)
+    parser.add_argument("--phase2-lr", "--fq-refine-lr", dest="phase2_lr", type=float, default=2e-4)
+    parser.add_argument("--core-lr", "--fq-core-lr", dest="core_lr", type=float, default=1e-4)
+    parser.add_argument("--readout-lr", "--fq-readout-lr", dest="readout_lr", type=float, default=1e-3)
+    parser.add_argument("--patience", "--fq-patience", dest="patience", type=int, default=10)
+    parser.add_argument("--fq-reupload", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--aug-degrees", type=float, default=8.0)
     parser.add_argument("--aug-translate", type=float, default=0.05)
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Refuse existing run artifacts; use a new output directory for a fresh run.")
     args = parser.parse_args()
     if min(args.phase1_epochs, args.phase2_epochs, args.phase3_epochs,
            args.batch_size, args.patience) < 1:
@@ -254,13 +366,14 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     if not out_dir.is_absolute():
         out_dir = Path.cwd() / out_dir
-    if out_dir.exists() and any(out_dir.iterdir()):
-        parser.error(f"Output folder already contains files; choose a new --out-dir: {out_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     seed_all(args.seed)
     device = torch.device(args.device)
-    train_loader, validation_loader, train_indices, validation_indices = make_loaders(args, device)
+    train_loader, validation_loader, generator, train_indices, validation_indices = make_loaders(args, device)
+    # Match run_convergence: reset the global seed immediately before creating
+    # each phase's model, while each phase gets a freshly seeded loader generator.
+    seed_all(args.seed)
     model = build_model(device)
     total_params = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
     print("Training from scratch with the original 3-phase schedule; no old checkpoint is loaded.", flush=True)
@@ -286,13 +399,15 @@ def main() -> None:
             "phase3": {"optimizer": "Adam + ReduceLROnPlateau", "core_lr": args.core_lr,
                        "readout_lr": args.readout_lr, "epochs_max": args.phase3_epochs,
                        "scheduler_factor": 0.5, "scheduler_patience": 3,
-                       "early_stop_patience": args.patience, "select": "validation_loss"},
+                       "early_stop_patience": args.patience, "select": "validation_loss",
+                       "reupload": args.fq_reupload},
             "batch_size": args.batch_size,
         },
         "seed": args.seed, "device": str(device), "output_directory": str(out_dir.resolve()),
+        "args": vars(args),
     }
-    with (out_dir / "config_mlp_aug.json").open("w", encoding="utf-8") as handle:
-        json.dump(config, handle, indent=2, ensure_ascii=False)
+    validate_run_directory(out_dir, config, resume=not args.no_resume)
+    write_json(out_dir / "config_mlp_aug.json", config)
     with (out_dir / "split_indices.csv").open("w", newline="", encoding="utf-8-sig") as handle:
         writer = csv.writer(handle)
         writer.writerow(["split", "dataset_index"])
@@ -306,27 +421,31 @@ def main() -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=args.phase1_lr)
     phase_rows, best_state = train_phase(
         tag="fq_mlp_aug_phase1_pretrain", phase="pretrain", model=model, optimizer=optimizer,
-        scheduler=None, train_loader=train_loader, validation_loader=validation_loader,
+        scheduler=None, train_loader=train_loader, validation_loader=validation_loader, generator=generator,
         epochs=args.phase1_epochs, select="val_accuracy", patience=None, offset=offset,
-        out_dir=out_dir, device=device, rows=rows)
+        out_dir=out_dir, device=device, rows=rows, resume=not args.no_resume)
     offset += len(phase_rows)
     write_history(rows, out_dir)
 
     # Phase 2: continue from phase-1 best with a fresh Adam optimizer.
+    train_loader, validation_loader, generator, _, _ = make_loaders(args, device)
+    seed_all(args.seed)
     model = build_model(device)
     load_phase_state(model, best_state)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.phase2_lr)
     phase_rows, best_state = train_phase(
         tag="fq_mlp_aug_phase2_refine", phase="refine", model=model, optimizer=optimizer,
-        scheduler=None, train_loader=train_loader, validation_loader=validation_loader,
+        scheduler=None, train_loader=train_loader, validation_loader=validation_loader, generator=generator,
         epochs=args.phase2_epochs, select="val_accuracy", patience=None, offset=offset,
-        out_dir=out_dir, device=device, rows=rows)
+        out_dir=out_dir, device=device, rows=rows, resume=not args.no_resume)
     offset += len(phase_rows)
     write_history(rows, out_dir)
 
     # Phase 3: add reupload layers and continue from phase-2 best.
-    model = build_model(device, reupload=True)
-    load_phase_state(model, best_state, allow_new_reupload=True)
+    train_loader, validation_loader, generator, _, _ = make_loaders(args, device)
+    seed_all(args.seed)
+    model = build_model(device, reupload=args.fq_reupload)
+    load_phase_state(model, best_state, allow_new_reupload=args.fq_reupload)
     core_params, readout_params = [], []
     for name, parameter in model.named_parameters():
         (readout_params if name.startswith("readout.") or ".readout." in name else core_params).append(parameter)
@@ -336,9 +455,9 @@ def main() -> None:
         optimizer, factor=0.5, patience=3, min_lr=1e-7)
     phase_rows, best_state = train_phase(
         tag="fq_mlp_aug_phase3_reupload", phase="reupload", model=model, optimizer=optimizer,
-        scheduler=scheduler, train_loader=train_loader, validation_loader=validation_loader,
+        scheduler=scheduler, train_loader=train_loader, validation_loader=validation_loader, generator=generator,
         epochs=args.phase3_epochs, select="val_loss", patience=args.patience, offset=offset,
-        out_dir=out_dir, device=device, rows=rows)
+        out_dir=out_dir, device=device, rows=rows, resume=not args.no_resume)
     write_history(rows, out_dir)
 
     best_path = out_dir / "full_quantum_mlp_aug_best.pt"

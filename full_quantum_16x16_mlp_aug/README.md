@@ -19,15 +19,21 @@ This isolated experiment keeps the original 16x16 FullQuantumQCNN training recip
 
 ## Run on the AnyDesk computer
 
-Copy this entire folder into the AnyDesk project root next to `runs/`, `mnist_data/`, and `venv/`. From any PowerShell location, run the venv Python by its full path (adjust the root path if the AnyDesk project is elsewhere):
+Copy this entire folder into the AnyDesk project root next to `runs/`, `mnist_data/`, and `venv/`. The command below keeps the original FullQuantum seed, split, batch size, phase lengths, learning rates, patience, and reupload setting; this run changes the readout to MLP and augments train images. From any PowerShell location, run the venv Python by its full path (adjust the root path if the AnyDesk project is elsewhere):
 
 ```powershell
-D:\tensornetwork_mnist\tensornetwork_mnist\venv\Scripts\python.exe D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\run_mlp_aug.py --device cuda --out-dir D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\runs\mlp_aug_3phase
+D:\tensornetwork_mnist\tensornetwork_mnist\venv\Scripts\python.exe D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\run_mlp_aug.py --models full_quantum --device cuda --seed 0 --split-seed 20260911 `
+  --fq-batch-size 64 `
+  --fq-pretrain-epochs 20 --fq-pretrain-lr 2e-3 `
+  --fq-refine-epochs 5 --fq-refine-lr 2e-4 `
+  --fq-epochs 60 --fq-core-lr 1e-4 --fq-readout-lr 1e-3 --fq-patience 10 --fq-reupload `
+  --aug-degrees 8 --aug-translate 0.05 `
+  --out-dir D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\runs\mlp_aug_3phase
 ```
 
-The same folder is the default output directory. It must be empty or not exist when starting a run. The script saves separate best checkpoints and histories for each phase, combined history CSV, configuration JSON, split indices, summary, plot, and final best checkpoint under `runs/mlp_aug_3phase/`.
+The script saves separate best and last checkpoints for each phase, phase completion markers, combined and per-phase CSV histories, configuration JSON, split indices, summary, plots, and final best checkpoint under `runs/mlp_aug_3phase/`. Re-running with the same settings resumes from the last saved epoch. A configuration mismatch is rejected; use `--no-resume` only with a new, empty output directory.
 
-During train and validation, the terminal updates the current batch, running loss/accuracy, and elapsed seconds in place. At the end of each epoch it prints the epoch metrics, both learning rates, elapsed time, and `*best`. Phase 3 can early-stop, just like the original run.
+During train and validation, the terminal updates the current batch, running loss/accuracy, and elapsed seconds in place. At the end of each epoch it prints the epoch metrics, both learning rates, elapsed time, and `*best`. The combined CSV and current phase CSV are rewritten after every completed epoch. Phase 3 can early-stop, just like the original run.
 
 The AnyDesk venv should already contain compatible PyTorch and torchvision. `requirements.txt` lists only NumPy and Matplotlib; do not replace the existing CUDA-enabled PyTorch installation for this experiment.
 cd D:\tensornetwork_mnist\tensornetwork_mnist
