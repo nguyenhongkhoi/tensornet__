@@ -94,13 +94,21 @@ def load_phase_state(model: FullQuantumQCNN, source: dict, allow_new_reupload: b
     model.load_state_dict(source, strict=False)
 
 
-def run_epoch(model, loader, device, optimizer=None):
+def run_epoch(model, loader, device, optimizer=None, progress_label: str | None = None):
     training = optimizer is not None
     model.train(training)
     loss_sum, correct, seen = 0.0, 0, 0
+    started = time.perf_counter()
+    total_batches = len(loader)
     context = torch.enable_grad() if training else torch.inference_mode()
     with context:
-        for images, labels in loader:
+        for batch_index, (images, labels) in enumerate(loader, start=1):
+            if progress_label:
+                print(
+                    f"\r[{progress_label}] batch {batch_index:>3}/{total_batches} running...",
+                    end="",
+                    flush=True,
+                )
             images, labels = images.to(device), labels.to(device)
             if training:
                 optimizer.zero_grad(set_to_none=True)
@@ -114,6 +122,22 @@ def run_epoch(model, loader, device, optimizer=None):
             loss_sum += float(loss.detach()) * labels.numel()
             correct += int((logits.detach().argmax(dim=1) == labels).sum())
             seen += labels.numel()
+            if progress_label:
+                elapsed = time.perf_counter() - started
+                print(
+                    f"\r[{progress_label}] batch {batch_index:>3}/{total_batches} "
+                    f"loss={loss_sum / seen:.4f} acc={correct / seen:.2%} "
+                    f"elapsed={elapsed:.0f}s",
+                    end="",
+                    flush=True,
+                )
+    if progress_label:
+        print(
+            f"\r[{progress_label}] batches {total_batches}/{total_batches} "
+            f"loss={loss_sum / seen:.4f} acc={correct / seen:.2%} "
+            f"elapsed={time.perf_counter() - started:.0f}s",
+            flush=True,
+        )
     return loss_sum / seen, correct / seen
 
 
@@ -159,8 +183,14 @@ def train_phase(*, tag, phase, model, optimizer, scheduler, train_loader, valida
     best_path = out_dir / f"{tag}_best.pt"
     for epoch in range(1, epochs + 1):
         started = time.perf_counter()
-        train_loss, train_acc = run_epoch(model, train_loader, device, optimizer)
-        val_loss, val_acc = run_epoch(model, validation_loader, device)
+        train_loss, train_acc = run_epoch(
+            model, train_loader, device, optimizer,
+            progress_label=f"{tag} epoch {epoch}/{epochs} train",
+        )
+        val_loss, val_acc = run_epoch(
+            model, validation_loader, device,
+            progress_label=f"{tag} epoch {epoch}/{epochs} validation",
+        )
         lr_core, lr_readout = optimizer.param_groups[0]["lr"], optimizer.param_groups[-1]["lr"]
         row = {"epoch": offset + epoch, "phase": phase, "train_loss": train_loss,
                "train_accuracy": train_acc, "validation_loss": val_loss,

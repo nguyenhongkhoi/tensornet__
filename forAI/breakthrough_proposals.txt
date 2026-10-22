@@ -1,0 +1,146 @@
+================================================================================
+PHAN TICH CHUYEN SAU VA DE XUAT CAI TIEN DOT PHA CHO FULL QUANTUM QCNN
+Thu muc: d:\data_system\tensornetwork_mnist\forAI
+Ngay tao: 2026-10-22
+================================================================================
+
+1. BOI CANH VA NGUON DOI CHIEU
+--------------------------------------------------------------------------------
+- Nguon ma nguon doi chieu truc tiep:
+  + models/layers/tn_core.py (QuantumConvPoolBlock, QuantumMergeStage, StronglyEntanglingCore)
+  + models/layers/unitary.py (LearnedUnitary1Q, LearnedUnitary2Q)
+  + models/layers/readout.py (PauliObservableReadout, PauliMLPReadout)
+  + models/full_quantum_qcnn.py (FullQuantumQCNN, spatial_permutation)
+  + models/reupload.py (ReuploadQuantumTNCore, add_reupload)
+  + data/encoding.py (angle_ry_encode)
+  + data/preprocessing.py (preprocess_full_quantum)
+  + full_quantum_16x16_mlp_aug/run_mlp_aug.py (Thi nghiem 16x16 MLP + Augmentation)
+  + full_quantum_32x32/run_32x32.py (Thi nghiem 32x32 pad)
+- Baseline goc: 16x16, 3 nhanh row, final_qubits=8, strongly_entangling n_layers=4,
+  readout Pauli full9 + Linear(276, 10), 3-phase recipe.
+  Validation loss: 0.074029, Validation accuracy: 97.71%.
+
+2. CHAN DOAN 3 NUT THAT CAU TRUC COT LOI
+--------------------------------------------------------------------------------
+Ngoai cac yeu to ngoai vi nhu Data Augmentation va MLP Readout, mo hinh FullQuantumQCNN
+hien tai dang bi gioi han boi 3 nut that cau truc nam ngay trong Tensor Network:
+
+NUT THAT A: MAT TUONG QUAN (ENTANGLEMENT) DO PARTIAL TRACE SAU MOI TANG POOLING
+- Co che hien tai trong QuantumConvPoolBlock:
+  1) Moi block nhan 2k site, ghep thanh k cap site lien ke: (0,1), (2,3),...
+  2) Ap dung LearnedUnitary2Q conv (4x4), tiep theo LearnedUnitary2Q pool (4x4) len tung cap.
+  3) Ham _trace_second_qubit thuc hien partial trace bo hoan toan qubit thu 2 cua moi cap.
+  4) Dau ra moi block la mot danh sach cac ma tran mat do 2x2 doc lap (factorized product state).
+- He qua: Toan bo tuong quan (quantum entanglement / correlation) giua cac cap khac nhau
+  bi xoa sach hoan toan sau moi block.
+- Qua 5 block pooling o ban 16x16, mo hinh bi "mat tri nho toan cuc" 5 lan lien tiep.
+  Chi den khi con lai 8 qubit cuoi cung o merge stage thi strongly-entangling moi duoc
+  ap dung de entangle lai. Day la diem nghen bieu dien nghiem trong nhat cua mo hinh.
+
+NUT THAT B: FLATTEN 2D THANH 1D VA CA 3 NHANH CUNG NHIN ROW-MAJOR
+- Anh 16x16 duoc trai phang theo thu tu hang (row-major) thanh 256 site.
+- Block 1 ghep (pixel_0, pixel_1), (pixel_2, pixel_3)... giup cac pixel canh nhau theo
+  hang ngang duoc tuong tac som.
+- Tuy nhien, cac pixel canh nhau theo chieu doc (cach nhau 16 vi tri) bi tach roi
+  hoan toan va chi co the gap nhau o cac tang pooling rat sau (tang 4, tang 5).
+- Trong baseline, ca 3 nhanh quantum deu de mac dinh spatial_orders=None (tuc ca 3 deu
+  nhan thu tu row). Ba nhanh vi vay mac cung mot blind spot khong gian, de hoc giai
+  phap trung lap thay vi bo tro cho nhau.
+
+NUT THAT C: CO CHE RE-UPLOADING QUA THO SO
+- Trong reupload.py, sau khi TN core gom 256 site con 8 qubit, co che re-upload chi tinh
+  trung binh cong goc RY cua cac pixel thuoc nhom anh xa toi qubit do:
+    angles = angles.reshape(angles.shape[0], -1, self.final_qubits).mean(dim=1)
+    angles = angles * self.reupload_scale[None, :]
+- Moi qubit chi nhan duy nhat 1 goc quay trung binh voi 1 scalar scale (tong cong chi
+  +24 tham so cho ca 3 nhanh). Thong tin chi tiet ve net ve va do tuong phan cuc bo
+  bi san phang khi lay trung binh, lam giam tac dung phuc hoi thong tin cua re-uploading.
+
+3. NAM DE XUAT CAI TIEN MANG TINH DOT PHA
+--------------------------------------------------------------------------------
+
+DE XUAT 1: INTERMEDIATE ENTANGLING LAYER (UU TIEN HANG DAU, THUAN QUANTUM)
+- Muc tieu: Khac phuc Nut that A ma khong lam pha vo tinh chat quantum cua Tensor Network.
+- Thiet ke: Chen mot lop entangling nhe giua cac tang pooling (vi du sau block 2 va block 4).
+  + Sau block 2, con 64 qubit (hoac sau block 3 con 32 qubit).
+  + Thay vi de cac qubit doc lap di tiep vao block sau, ap dung 1 luot brickwall entangling
+    (2-qubit unitary) tren cac cap so le (1,2), (3,4)... MA KHONG TRACE BO QUBIT NAO.
+  + Buoc nay cho phep thong tin lan truyen cheo giua cac nhanh cua cay tensor truoc khi bi pool tiep.
+- Chi phi: Chi them khoang 32 - 64 tham so unitary, chi phi tinh toan tang khong dang ke.
+
+DE XUAT 2: SPATIAL DIVERSITY (ROW / COLUMN / MORTON) CHO 3 NHANH (CHI PHI 0 THAM SO)
+- Muc tieu: Khac phuc Nut that B ngay lap tuc bang code da co san trong full_quantum_qcnn.py.
+- Thiet ke: Cau hinh FQ_ARCH voi:
+    spatial_orders=["row", "column", "morton"]
+  + Nhanh 1 (row): Gom cac pixel theo hang ngang, bat cac dac trung nam ngang.
+  + Nhanh 2 (column): Gom cac pixel theo cot doc, bat cac net dung va do cao net chu.
+  + Nhanh 3 (morton / Z-curve): Gom cac patch 2x2, 4x4 cuc bo 2D, bao toan tinh lien thong khong gian.
+- Chi phi: 0 tham so them, khong tang thoi gian tinh toan, giai quyet su trung lap cua 3 nhanh.
+
+DE XUAT 3: MULTI-SCALE RE-UPLOADING (PHUC HOI THONG TIN PIXEL GOC)
+- Muc tieu: Khac phuc Nut that C, dua thong tin hinh hoc pixel vao sau pooling mot cach chi tiet hon.
+- Thiet ke: Thay vi 1 scalar trung binh cho moi qubit:
+  + Dung mot module chieu nhe (vi du Linear(32 -> 16) -> GELU -> Linear(16 -> 4)) de trich xuat
+    4 goc quay dai dien tu 32 pixel dau vao ung voi moi qubit.
+  + Thuc hien 4 vong quay re-upload lien tiep ket hop entangling gate truoc khi vao merge stage.
+- Chi phi: Khoang 3.000 - 5.000 tham so, thoi gian tinh toan tang rat it.
+
+DE XUAT 4: RESIDUAL CLASSICAL BOND MEMORY (TICH HOP DUONG TRUYEN RESIDUAL)
+- Muc tieu: Bu dap hoan toan luong thong tin bi mat mat qua partial trace.
+- Thiet ke: Xay dung mot nhanh phu song song nhe (1D Conv stride=2 qua 5 block) rut gon
+  256 gia tri pixel xuong 8 gia tri dac trung co dien.
+  + 8 gia tri nay duoc ghep truc tiep vao vector 276 Pauli features truoc khi dua vao Readout Head.
+- Danh gia: Ranh gioi giua hybrid va full quantum bi mo di doi chut, nhung day la co che
+  chong mat thong tin cuc ky hieu qua trong thi giac may tinh.
+
+DE XUAT 5: LEARNED POSITIONAL ANGLE ENCODING (MA HOA CO TRONG SO KHONG GIAN)
+- Muc tieu: Thay the co che ma hoa RY co dinh (theta = pi * p).
+- Thiet ke:
+    theta_i = p_i * w_i + b_i  (voi w_i, b_i la tham so hoc rieng cho tung site i = 0..255)
+- Y nghia: Vung trung tam anh (noi net chu tap trung) se hoc duoc do nhay ma hoa goc
+  khac biet hoan toan so voi vung ria ngoai (noi chu yeu la vien den).
+- Chi phi: Them dung 512 tham so (256 scale + 256 bias).
+
+4. BANG XEP HANG VA SO SANH CAC PHUONG AN
+--------------------------------------------------------------------------------
+| Phuong an | Mua do dot pha | Do kha thi | So tham so them | Tinh chat thuan Quantum |
+|---|---|---|---|---|
+| Intermediate Entangling | Rat cao (4.5/5) | Cao (4/5) | ~32 - 64 | 100% Quantum Gate |
+| Spatial Diversity (R-C-M) | Cao (4/5) | Rat cao (5/5) | 0 | 100% Topology |
+| Multi-scale Re-upload | Cao (4/5) | Cao (4/5) | ~3.000 | Hybrid Parameterized |
+| Residual Bond Memory | Rat cao (5/5) | Trung binh (3/5) | ~2.000 - 5.000 | Classical Skip Connection |
+| Learned Positional Encoding | Kha (3.5/5) | Rat cao (5/5) | 512 | Input Quantum State Prep |
+
+5. LO TRINH COMBO THUC NGHIEM TOI UU DE VUOT MOC 98.5%
+--------------------------------------------------------------------------------
+De dat buoc nhay vot ve do chinh xac tren tap Validation 10.000 mau ma khong gay sup do
+thoi gian huan luyen nhu ban 32x32, combo de xuat toi uu gom:
+
+1) Giu nguyen kich thuoc 16x16 (256 sites) de giu toc do 15-20 phut/epoch va batch size 64.
+2) Kich hoat Spatial Diversity: spatial_orders=["row", "column", "morton"] cho 3 nhanh.
+3) Chen Intermediate Entangling Layer giua cac block pooling (sau block 2 va block 4).
+4) Ap dung Learned Positional Encoding (+512 tham so).
+5) Dung MLP Readout Head (276 -> 256 -> LayerNorm -> GELU -> Dropout(0.1) -> 10).
+6) Ket hop Data Augmentation (RandomAffine degrees=8, translate=0.05) chi tren tap Train.
+
+6. NHUNG HUONG KHONG NEN TIEP TUC LANG PHI TAI NGUYEN
+--------------------------------------------------------------------------------
+- KHONG tang tiep do phan giai len 32x32: Lam cay tensor sau len 7 block, lam mat mat
+  tuong quan nang them, thoi gian train ~71 phut/epoch, thuc te phase 1 kem hon 16x16.
+- KHONG tang final_qubits len 9+: Ma tran mat do chung tang theo 2^n x 2^n (512x512),
+  gay tran bo nho GPU (OOM) va vuot qua kha nang xu ly cua StronglyEntanglingCore.
+- KHONG chi doi optimizer (AdamW, SGD, CosineAnnealing): Bottleneck chinh nam o bieu dien
+  khong gian va co che trace cua Tensor Network, khong phai do thieu hoi tu optimizer.
+- KHONG train lap lai tap hard-only 701 mau: Da chung minh lam tang validation loss (overfit).
+
+================================================================================
+--- THÔNG TIN THỰC HIỆN ---
+Model AI: Gemini 3.8 Flash (tổng hợp & chuẩn hóa tài liệu), Claude Opus 4.6 (phân tích mã nguồn chuyên sâu & xây dựng đề xuất)
+Agent/người thực hiện: Antigravity Coding Assistant
+Thời gian bắt đầu: 2026-10-22 20:59, Asia/Saigon (UTC+07:00)
+Thời gian kết thúc: 2026-10-22 21:10, Asia/Saigon (UTC+07:00)
+Tổng thời lượng: 11 phút
+Đóng góp: Đọc kỹ quy tắc HADTOREAD.TXT; phân tích chi tiết mã nguồn tn_core.py, unitary.py, readout.py, full_quantum_qcnn.py, reupload.py, encoding.py; chỉ rõ 3 nút thắt cấu trúc cốt lõi; xây dựng 5 đề xuất cải tiến đột phá vượt ngoài Augmentation và MLP; lập lộ trình combo thực nghiệm tối ưu và danh sách các hướng cần tránh lãng phí tài nguyên.
+--- HẾT THÔNG TIN THỰC HIỆN ---
+================================================================================
+

@@ -291,3 +291,39 @@ Trang thai quyet dinh: chay mot run moi tu random initialization voi day du 3 ph
 - Lenh PowerShell tu bat ky thu muc nao (duong dan project AnyDesk can khop voi cay thu muc hien tai; neu AnyDesk root doi thi cap nhat theo anh moi nhat):
 `D:\tensornetwork_mnist\tensornetwork_mnist\venv\Scripts\python.exe D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\run_mlp_aug.py --device cuda --out-dir D:\tensornetwork_mnist\tensornetwork_mnist\full_quantum_16x16_mlp_aug\runs\mlp_aug_3phase`
 - Chi train script nay tren may AnyDesk, khong tren workspace Codex. Trien khai nay chua duoc chay; can copy source moi nhat len AnyDesk truoc khi bat dau.
+
+15. QUYET DINH MOI (2026-10-22): BO DE XUAT QCNN TRONG PAPER, TAP TRUNG KIEN TRUC 16x16
+Muc nay la ket luan uu tien moi nhat va uu tien hon cac y tuong 32x32 o muc 13, MLP+augmentation o muc 14, cung de xuat port paper trong `multiclass_qcnn_tensor_network_plan.txt`. Khong tiep tuc port/reproduce QCNN trong paper Mordacci et al.; khong danh thoi gian vao benchmark paper do cho muc tieu hien tai. Giữ cac ket qua/checkpoint cu lam moc tham khao, khong xoa.
+
+15.1. Danh gia hai de xuat da co
+A. FullQuantumQCNN 32x32 (muc 13): KHONG uu tien va tam dung. Pad 28x28 thanh 32x32 khong them thong tin anh; so site tang tu 256 len 1.024, lam chi phi contraction/train tang manh. Day la thay doi cach pad va quy mo tinh toan, chua phai mot y tuong cai tien ro rang cua kien truc 16x16. Chi xem lai neu co gia thuyet cu the ve receptive field/anh huong bien va thiet ke doi chung; neu khong, khong chay.
+B. MLP readout + RandomAffine (muc 14): co the thu, nhung ban hien tai KHONG cho biet yeu to nao tao ra thay doi vi cung luc doi readout va augmentation. MLP readout chi tang nang luc head, khong cai tien TN core; augmentation la thay doi du lieu, khong phai kien truc. Khong chay ban gop ca hai nhu mot ket luan kien truc. Neu code/run da san sang, tach thanh cac ablation cung seed/split va so sanh: (1) baseline 16x16, (2) chi MLP readout, (3) chi augmentation, (4) MLP + augmentation. Chi giu augmentation neu muc tieu cho phep toi uu ca pipeline du lieu; trong nhanh nghien cuu kien truc, so sanh cac model tren cung protocol va khong coi augmentation la cai tien kien truc.
+C. Port QCNN paper: bo khoi roadmap. De xuat nay co muc tieu reproduction mot mach khac, preprocessing PCA, encoding va giao thuc rieng; ket qua paper duoc ghi trong plan cung khong gan voi muc tieu nang hieu nang model 16x16 hien tai. Khong tiep tuc implementation, tuning hay chay training cho huong nay.
+
+15.2. Muc tieu va nguyen tac so sanh
+- Muc tieu: cai thien FullQuantumQCNN 16x16 tren cung MNIST split, so voi baseline 97.71% validation accuracy va validation loss khoang 0.0740 (checkpoint goc ghi o muc 1). Uu tien kien truc TN/core; khong doi kich thuoc anh len 32x32.
+- Moi run chi thay mot thanh phan kien truc; dung cung split seed 20260911, preprocessing, optimizer recipe va quy tac chon checkpoint. Ghi parameter count, thoi gian moi epoch/tong thoi gian, VRAM neu co, validation loss/accuracy, macro-F1, per-class recall va so loi tren hard-validation.
+- Khong dung MNIST test de chon thiet ke. Chay tren may AnyDesk theo quy dinh muc 10; khong ghi de checkpoint baseline. Moi run dung output folder rieng va luu config/source revision.
+- Khong xem accuracy validation tang rat nho trong mot seed la ket luan chac chan. Neu chenh lech nho, lap lai it nhat 3 seed truoc khi chon; bao cao trung binh va do lech. Khong dat truoc muc tieu 99%.
+
+15.3. Lo trinh kien truc 16x16 de nghi
+0. Moc doi chung: chot baseline 16x16 tu checkpoint va config chinh xac; xac nhan lai metric tren validation bang cung pipeline. Neu so lieu baseline khong tai tao duoc, dung viec so sanh cho den khi tim ra sai lech.
+1. Nhanh TN da huong / nhieu thu tu site (uu tien cao): hien cac nhanh doc lap dang dung cung row ordering. Tao mot bien the 16x16 trong do cac nhanh TN dung cac thu tu quet khac nhau (vi du row-major, column-major va mot thu tu block/locality duoc dinh nghia ro), sau do dua feature ve readout chung. Muc tieu la giam phu thuoc vao mot cach ghep site 1D va khai thac cau truc khong gian 2D. Giu so nhanh, readout, so tham so va recipe gan baseline nhat co the; so sanh voi baseline. Kiem tra mapping pixel-site va tinh tuong thich checkpoint.
+2. Neu nhanh 1 co loi ich: ablation rieng cho cach ghep/lop TN: thay doi mot trong cac yeu to nhu so merge rounds, gate depth hoac pattern entanglement; khong thay nhieu yeu to mot luc. Theo doi ca hieu nang va chi phi contraction/runtime. Khong mac dinh tang depth la tot hon.
+3. Kiem tra do manh va kha nang lap lai: chay cac cau hinh tot nhat tren nhieu seed. Sau do moi thu thay doi readout (MLP) rieng, voi core va du lieu giu nguyen, de xac dinh head phi tuyen co giup ich khong.
+4. Thu augmentation nhu mot nhanh pipeline rieng neu can; khong tron ket qua voi ket luan kien truc. Dung bien doi nhe va danh gia tren validation khong augmentation.
+
+15.4. Tieu chi quyet dinh
+- Mot bien the chi duoc dua tiep neu validation loss/accuracy va cac chi so theo lop cho thay loi ich lap lai duoc, khong chi giam loi tren train/hard subset. Neu co trade-off, ghi ro va giu baseline de doi chieu.
+- Neu tang accuracy rat nho nhung tang dang ke tham so, runtime hoac VRAM, bao cao day la trade-off; khong goi la cai tien ro rang.
+- Trien khai 2D/nhieu ordering co the lam thay doi dang ke contraction va state_dict; tao module/checkpoint moi, khong nap nham checkpoint cu. Truoc train day du, xac minh mapping, shape, output finite, gradient finite va mot overfit nho tren batch de kiem tra pipeline.
+- Trang thai hien tai: day la roadmap de xuat; chua co ket qua thuc nghiem nao cho cac bien the trong muc 15.3. Khong ghi la da cai thien cho den khi run va so sanh xong.
+
+--- THONG TIN THUC HIEN ---
+Model AI: GPT-6 (Codex)
+Agent/nguoi thuc hien: Codex
+Thoi gian bat dau: khong ghi nhan
+Thoi gian ket thuc: 2026-10-22 21:08, Asia/Saigon (UTC+07:00)
+Tong thoi luong: khong xac dinh
+Dong gop: Cap nhat plan.txt voi quyet dinh dung huong port QCNN paper, danh gia de xuat 32x32 va MLP+augmentation, va lap roadmap/criteria cho cac thu nghiem kien truc 16x16. Chua chay cac training experiments.
+--- HET THONG TIN THUC HIEN ---

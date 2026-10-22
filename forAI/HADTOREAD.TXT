@@ -1,0 +1,23 @@
+﻿QUY TAC GHI TAI LIEU AI — forAI
+
+Phạm vi
+- Áp dụng cho mọi AI/agent tạo mới hoặc cập nhật tài liệu dạng .txt trong thư mục `forAI`.
+- Khi hoàn thành tài liệu, phải ghi rõ thông tin người/model thực hiện, thời gian làm và phần đóng góp ngay trong file .txt đó. Không chỉ ghi các thông tin này trong chat hoặc ở file khác.
+
+Thông tin bắt buộc trong mỗi file .txt
+1. AI/agent thực hiện: ghi tên model cụ thể (ví dụ: GPT-5.6, Claude Sonnet 4) và tên agent nếu có. Không ghi chung chung như “AI”. Nếu không xác định được model, ghi “Không xác định” và nêu lý do; không tự đoán.
+2. Thời gian thực hiện: ghi ngày, giờ bắt đầu và kết thúc, kèm múi giờ (mặc định Asia/Saigon, UTC+07:00). Ghi tổng thời lượng nếu xác định được. Không bịa thời gian; nếu không có giờ bắt đầu thì ghi rõ “không ghi nhận”.
+3. Đóng góp: mô tả cụ thể nội dung đã tạo/sửa, phân tích hoặc kiểm tra; nêu các tệp/phần liên quan. Phân biệt việc đã làm với đề xuất chưa thực hiện.
+
+Mẫu ghi ở cuối tài liệu
+
+--- THÔNG TIN THỰC HIỆN ---
+Model AI: <tên model cụ thể hoặc Không xác định>
+Agent/người thực hiện: <tên hoặc Không có>
+Thời gian bắt đầu: <YYYY-MM-DD HH:MM, Asia/Saigon (UTC+07:00) hoặc không ghi nhận>
+Thời gian kết thúc: <YYYY-MM-DD HH:MM, Asia/Saigon (UTC+07:00)>
+Tổng thời lượng: <thời lượng hoặc không xác định>
+Đóng góp: <mô tả cụ thể>
+--- HẾT THÔNG TIN THỰC HIỆN ---
+
+Nếu nhiều model/agent cùng đóng góp, ghi riêng model, thời gian và đóng góp của từng bên. Khi cập nhật file đã có, thêm mục lịch sử cập nhật với thông tin thực hiện cho lần cập nhật mới; giữ lại thông tin lịch sử trước đó. Tài liệu chỉ do con người viết không bắt buộc khai báo model, nhưng phải ghi người viết và thời gian nếu biết.

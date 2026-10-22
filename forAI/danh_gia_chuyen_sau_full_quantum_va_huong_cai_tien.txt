@@ -1,0 +1,479 @@
+BAO CAO PHAN TICH CHUYEN SAU FULLQUANTUM QCNN MNIST
+Danh gia augmentation + MLP va cac huong cai tien uu tien hon
+
+Tac gia phan tich: Copilot
+Ngay: 2026-10-22
+Pham vi: doc ma nguon, cau hinh, log va tai lieu trong workspace hien tai.
+Khong chay training moi; cac de xuat can duoc kiem chung bang run rieng.
+
+================================================================================
+1. KET LUAN DIEU HANH
+================================================================================
+
+1. Baseline FullQuantumQCNN 16x16 da dat 97.71% validation accuracy va
+   validation loss 0.074029 tren split 50.000/10.000, split_seed=20260911,
+   seed training=0. Day la ket qua cua mot seed; MNIST official test chua duoc
+   dung trong ket qua nay.
+
+2. Ban 16x16 + RandomAffine + MLP readout la mot thí nghiem hop ly, nhung
+   khong phai huong dau tien duoc ma nguon ung ho nhat:
+   - Augmentation co the giup invariance voi xoay/dich nhe.
+   - MLP tang kha nang phi tuyen tinh sau Pauli features.
+   - Nhung TN core hien tai co nut that cau truc: khi pool tung cap, code trace
+     bo mot qubit va chi truyen density matrix 2x2 rieng cho tung site con lai.
+     Tuong quan giua cac cap khong duoc mang qua cac tang pool.
+   - Ba nhanh dang dung cung mot thu tu site row-major; chua khai thac cac hoan
+     vi khong gian row/column/Morton ma model da ho tro.
+
+3. Thu nghiem co ty le loi ich/chi phi tot nhat de lam truoc:
+   (A) giu input 16x16, readout Linear full9 va so nhanh = 3, chi doi spatial
+       orders tu [row,row,row] sang [row,column,morton].
+   (B) neu can cai thien preprocessing, thu anti-alias khi resize 28x28 -> 16x16
+       bang mot ablation rieng.
+   Hai huong nay nham truc tiep vao bieu dien khong gian va chi tiet dau vao,
+   khong them mot head rat lon.
+
+4. Neu muc tieu la thu augmentation, nen bat dau bang augmentation nhe trong
+   fine-tune tu checkpoint baseline tren day du 50k train (khong phai hard-only),
+   giu validation nguyen trang va dung LR nho/early stopping. Thu nghiem nay
+   can tach rieng khoi thay doi readout.
+
+5. MLP hien tai co hidden_dim=256. Tinh tu code, readout tang tu 2.770 len
+   73.994 parameters moi nhanh; voi 3 nhanh, tong readout tang tu 8.310 len
+   221.982 parameters. Tong model uoc tinh tang tu 13.110 truoc reupload len
+   226.782, va len 226.806 khi co 24 reupload scales. Day la xap xi 17.3 lan
+   tong tham so baseline sau reupload. So tham so lon khong tu dong gay overfit,
+   nhung hien chua co bang chung MLP 256 can thiet de vuot 97.71%.
+
+6. 32x32 co uu diem giu pixel goc bang padding thay vi downsample, nhung tang
+   input sites tu 256 len 1.024 va tang so pooling blocks tu 5 len 7. Chi phi
+   lon hon khong dong nghia accuracy cao hon. Log 32x32 trong tai lieu hien
+   khong dong nhat va deu chua the coi la ket qua cuoi cua ba phase.
+
+KET LUAN NGAN:
+Khong nen ket hop augmentation va MLP ngay trong mot run roi xem do la cai tien.
+Nen chay ablation theo tung yeu to. Neu chi chon mot huong kien truc de thu truoc,
+uu tien [row,column,morton] tren ba nhanh hien tai; neu chi chon mot huong du lieu,
+uu tien augmentation nhe warm-start tren day du train. MPS/TN co bond la huong
+co co so truc tiep nhat voi nut that pooling, nhung can dau tu code va compute
+cao hon.
+
+================================================================================
+2. NGUON DA DOC VA GIOI HAN BANG CHUNG
+================================================================================
+
+Ma nguon chinh da doi chieu:
+- models/full_quantum_qcnn.py
+- models/layers/tn_core.py
+- models/layers/unitary.py
+- models/layers/readout.py
+- models/reupload.py
+- data/preprocessing.py
+- data/encoding.py
+- full_quantum_16x16_mlp_aug/run_mlp_aug.py
+- full_quantum_16x16_mlp_aug/models/layers/readout.py
+- full_quantum_32x32/run_32x32.py
+- full_quantum_32x32/training_utils.py
+
+Artifact va ghi chu da doi chieu:
+- full_quantum/full_quantum/config.json
+- full_quantum/full_quantum/history_full_quantum.csv
+- full_quantum/full_quantum/summary.json
+- full_quantum/full_quantum/fq_phase3_reupload_done.json
+- full_quantum_16x16_mlp_aug/README.md
+- full_quantum_32x32/README.md
+- forAI/analysis_full_quantum_16x16.txt
+- forAI/explain_32x32.txt
+- forAI/plan.txt
+- forAI/validcheck.txt
+
+Trang thai bang chung:
+- Baseline 16x16 co summary va history day du trong workspace.
+- Chua tim thay history/summary/checkpoint output cua run full
+  full_quantum_16x16_mlp_aug.
+- Chua tim thay artifact run 32x32 day du trong workspace. Tai lieu
+  explain_32x32.txt ghi cac moc dang do, nhung chua co CSV de doi chieu.
+- Vi vay moi danh gia ve kha nang model moi tot hon la gia thuyet co can cu code,
+  khong phai ket qua training da xac nhan.
+
+Luu y ve log 32x32:
+- explain_32x32.txt ghi log phase 1 toi epoch 6, cao nhat duoc neu la 96.17%
+  o epoch 4 va thoi gian 4.217-4.262 giay/epoch, dong thoi noi xap xi 70-71
+  phut/epoch. Hai con so thoi gian nay khong tuong thich.
+- analysis_full_quantum_16x16.txt ghi log 32x32 cao nhat 96.72% o epoch 14 va
+  epoch mat 4.2-4.9 nghin giay. Khac voi mo ta trong explain_32x32.txt.
+- Khong co history 32x32 trong workspace de xac dinh ghi chu nao dung. Khong
+  nen dung cac moc nay de xep hang model; can lay CSV goc va config cua run.
+
+================================================================================
+3. DUONG DI DU LIEU VA MA HOA
+================================================================================
+
+3.1. Du lieu va split
+- Script baseline run_convergence.py va script MLP+augmentation deu chia MNIST
+  official train 60.000 mau thanh 10.000 validation dau tien va 50.000 train
+  con lai theo torch.randperm voi split_seed=20260911.
+- Validation khong duoc cap nhat gradient.
+- Official MNIST test khong duoc dung trong baseline hien tai.
+- Script MLP+augmentation tao hai dataset MNIST tach biet: train co RandomAffine,
+  validation chi ToTensor. Day la cach dung de validation khong bi augmentation.
+
+3.2. Baseline preprocessing
+- MNIST vao model la grayscale 28x28, gia tri pixel [0,1].
+- preprocess_full_quantum mac dinh mode="resize"; F.interpolate bilinear,
+  align_corners=False dua anh ve 16x16.
+- Ham downsample hien tai khong truyen antialias=True.
+- Anh 16x16 duoc flatten row-major thanh 256 site.
+- angle_ry_encode tao theta = pi * pixel va state
+  cos(theta/2)|0> + sin(theta/2)|1>.
+- Moi gia tri pixel duoc ma hoa thanh mot qubit state; khong co trainable image
+  embedding truoc TN core.
+
+3.3. He qua thuc te
+- Resize 28x28 -> 16x16 lam giam so site va chi phi, nhung co the lam mat net
+  nho, diem giao nhau, do day net hoac chi tiet phan biet mot so cap chu so.
+- Augmentation trong MLP runner duoc ap dung tren anh 28x28 truoc khi model
+  resize xuong 16x16. Vi vay augmentation va downsampling tac dong lien tiep
+  len cung mot tin hieu; net mảnh sau xoay/dich co the bi thay doi khi resize.
+- RandomAffine dang dat degrees=8, translate=0.05, fill=0; 5% tren chieu 28
+  tuong duong toi da khoang 1.4 pixel theo moi truc. Interpolation khong duoc
+  chi dinh trong code, nen phu thuoc default cua torchvision RandomAffine.
+- Train accuracy trong runner MLP duoc tinh tren cac ban anh da augment ngau
+  nhien; khong the so truc tiep voi train accuracy baseline tinh tren anh sach.
+
+================================================================================
+4. CAU TRUC TN CORE - DIEM MANH VA NUT THAT
+================================================================================
+
+4.1. So tang gop
+QuantumTNCore kiem tra input_sites/final_qubits phai la luy thua cua 2.
+Voi final_qubits=8:
+- 16x16: 256/8=32=2^5, co 5 QuantumConvPoolBlock.
+- 32x32: 1024/8=128=2^7, co 7 block.
+
+4.2. Mot QuantumConvPoolBlock lam gi
+- Chia cac site thanh cap lien tiep (0,1), (2,3), ... tren chuoi da flatten.
+- Ghe density matrices 2x2 cua hai site thanh density matrix cap 4x4.
+- Ap dung mot learned 2-qubit unitary conv, sau do mot learned 2-qubit unitary
+  pool. Cung mot bo tham so gate duoc dung lai cho tat ca cap trong block.
+- Trace qubit thu hai trong moi cap; chi giu density matrix 2x2 cua qubit song
+  sot. Output co mot density matrix rieng cho moi site con lai.
+- Block ke tiep ghep cac density matrix rieng nay nhu cac site doc lap.
+
+4.3. Thong tin bi mat
+- Sau khi trace qubit va chi truyen cac reduced one-site density matrices,
+  tuong quan giua survivor cua cap nay voi survivor cua cap khac khong con trong
+  trang thai dau vao block tiep theo.
+- Vi vay day khong phai MPS co bond dimension duoc truyen qua cac tang. Cac
+  ma tran 2x2 la marginal tung site; den cuoi moi ghep thanh product density.
+- Day la nut that bieu dien co co so truc tiep trong code neu nhan dang chu so
+  can tuong quan khong gian dai hon mot cap pixel.
+- Tuy nhien, viec mat tuong quan khong chung minh accuracy dang bi gioi han
+  boi no; can ablation/architecture moi de do anh huong.
+
+4.4. Chuoi 1D va topology anh
+- Anh 2D duoc flatten row-major. Ghe cap lien tiep tuong ung cac pixel ngang
+  o tang dau, nhung cac tang tiep theo tiep tuc gop tren cay 1D.
+- Model da co spatial_permutation ho tro "row", "column", "morton".
+- FQ_ARCH baseline va FQ_ARCH cua script MLP khong truyen spatial_orders, nen
+  mac dinh ba nhanh la ["row","row","row"].
+- Ba nhanh co tham so core va readout rieng, nhung nhin cung thu tu pixel va
+  duoc train bang cung loss. Chung co the tu hoc khac nhau, nhung khong co rang
+  buoc nao dam bao ba nhanh phat trien chuyen mon/bo sung.
+- [row,column,morton] se cho cac nhanh cung so site va cung so tham so nhung
+  phan cap cac cap site khac nhau. Day la thay doi topology co san trong model,
+  khong can them mot MLP lon.
+
+4.5. Giai doan cuoi
+- Sau cac tang pooling, 8 site duoc ghep thanh joint density matrix 256x256.
+- StronglyEntanglingCore mac dinh co 4 layer. Moi layer co learned one-qubit
+  rotations va cac learned two-qubit gates noi qubit theo range luan phien.
+- Ba nhanh chay TN rieng tren cung encoded image, doc logits rieng va lay trung
+  binh logits truoc cross-entropy.
+- Reupload phase them 8 scale moi nhanh, tong 24 tham so. Cac scale bat dau
+  bang 0; trong code reupload tinh goc trung binh input theo nhom site map vao
+  tung qubit cuoi roi ap RY scale hoc duoc truoc merge stage.
+
+4.6. Unitary gates
+- LearnedUnitary2Q tao ma tran Hermitian tu raw_real/raw_imag va tinh
+  matrix_exp(iH); real_only mode tao orthogonal matrix tu skew-symmetric.
+- init_scale=0.01 lam raw parameters ban dau nho, nen unitary gan identity.
+- Day la prior khoi tao, khong phai loi code. Khong nen thay init_scale dong
+  thoi voi thay spatial order, readout va augmentation trong cung run.
+
+================================================================================
+5. READOUT: LINEAR BASELINE VA MLP VARIANT
+================================================================================
+
+5.1. Pauli full9 Linear baseline
+- Readout doc 3*8=24 single-qubit expectations (X,Y,Z).
+- Co 8 choose 2 = 28 cap qubit; moi cap doc 9 tuong quan
+  XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ, tong 252 feature.
+- Tong 276 feature, dua vao Linear(276,10).
+- Moi nhanh: 276*10 + 10 = 2.770 tham so.
+- 3 nhanh: 8.310 tham so readout.
+- Tong baseline duoc config/tai lieu ghi 13.110 tham so truoc reupload va
+  13.134 sau khi them reupload.
+
+5.2. Pauli MLP trong variant
+- PauliMLPReadout thay lop Linear don bang:
+  Linear(276,256) -> LayerNorm(256) -> GELU -> Dropout(0.1)
+  -> Linear(256,10).
+- Tinh tham so tren moi nhanh:
+  + Linear 276->256: 276*256 + 256 = 70.912.
+  + LayerNorm: 2*256 = 512.
+  + Linear 256->10: 256*10 + 10 = 2.570.
+  + Tong: 73.994 tham so/nhanh.
+- Ba nhanh: 221.982 tham so readout, tang 213.672 so voi Linear full9.
+- Tong model uoc tinh 226.782 tham so truoc reupload va 226.806 sau reupload.
+- MLP khong lam tang so site hay depth TN, nhung tang kha nang phi tuyen tinh
+  va tham so readout manh. Dropout chi active trong model.train().
+
+5.3. Danh gia MLP
+Uu diem:
+- Co the hoc tuong tac phi tuyen giua cac Pauli features, trong khi linear head
+  chi tao bien quyet dinh tuyen tinh tren 276 feature.
+- LayerNorm/GELU/dropout tao mot head co regularization va phi tuyen tinh.
+
+Han che:
+- Features Pauli la cac expectation co mien gia tri co ban [-1,1]; MLP co the
+  tang do uon bien quyet dinh, nhung khong tao them thong tin da mat trong TN
+  pooling hay khi downsample anh.
+- 256 hidden units tao head lon hon nhieu so voi phan TN; khong co ablation
+  head 32/64/128 de biet quy mo can thiet.
+- Baseline train-validation gap khoang 0.87 diem phan tram (train 98.58%,
+  validation 97.71%), khong phai bang chung overfit nang. Do do, tang regularizer
+  hoac tang head khong tu dong la uu tien cao hon cai thien bieu dien.
+- MLP+augmentation runner doi hai nhom yeu to cung luc va train tu dau; neu ket
+  qua tang/giam thi khong biet nguyen nhan la augmentation, MLP hay tuong tac.
+
+Khuyen nghi neu can thu MLP:
+- Thu hidden_dim=64 truoc 256. Tham so readout xap xi:
+  276*64+64 + 2*64 + 64*10+10 = 18.506 moi nhanh,
+  55.614 cho ba nhanh. Van lon hon Linear 8.310 nhung chi bang 1/4 head 256.
+- Thu MLP-64 khong augmentation truoc. Sau do thu augmentation rieng tren
+  readout baseline hoac tren cau hinh tot nhat.
+- Khong khang dinh MLP-64 tot hon truoc khi co history/checkpoint.
+
+================================================================================
+6. DANH GIA SCRIPT MLP + AUGMENTATION
+================================================================================
+
+6.1. Nhung diem lam dung
+- Split seed va kich thuoc train/validation phu hop baseline.
+- Dataset train/validation tach rieng, augmentation khong ap dung len validation.
+- Validation duoc danh gia o model.eval(), do Dropout MLP tat khi validation.
+- Phase 1/2 chon theo validation accuracy; phase 3 chon theo validation loss.
+- Phase 2/3 load checkpoint tot nhat cua phase truoc; reupload scales phase 3
+  bat dau zero.
+- Output folder phai rong, output moi tach biet, khong ghi de run khac.
+- History ghi tung epoch, co loss, accuracy, learning rates va thoi gian.
+
+6.2. Han che khi dung de ket luan
+- Script chi thay readout va augmentation so voi baseline, nhung chay random
+  initialization tu dau; khong phai fine-tune baseline. Do vay chi phi thí
+  nghiem lon va ket qua chiu anh huong khoi tao.
+- Khong co resume sau khi bi ngat trong script nay; README can tinh den viec
+  run co the mat tien do neu dung giua chung.
+- Train accuracy duoc do tren batch da augment, nen so sanh voi clean-train
+  accuracy baseline khong phai apples-to-apples.
+- Summary best_validation_loss duoc tinh bang min(rows) qua tat ca phase,
+  nhung final full_quantum_mlp_aug_best.pt duoc tao tu best_state cua phase 3
+  (checkpoint phase 3 chon theo validation loss). Neu val loss thap nhat toan
+  run xay ra o phase 1/2, metric summary va checkpoint cuoi khong cung epoch.
+  Khi bao cao, can ghi metric theo checkpoint thuc su va checkpoint selection.
+- Summary best_validation_accuracy cung la max tren tat ca rows va co the
+  khong cung checkpoint voi best loss. Script co ghi epoch cua tung metric,
+  nhung can tranh goi chung la "accuracy cua best checkpoint".
+- Validation duoc dung de chon epoch va so sanh nhieu variants; neu thu qua
+  nhieu cau hinh tren cung split, ket qua validation co nguy co bi overfit do
+  model selection. Test chi nen dung sau khi chot cau hinh.
+
+6.3. Dieu chinh phuong phap truoc khi chay
+- Tao ablation rieng: same seed/split va same training schedule.
+- Neu giu training tu dau, so sanh baseline reproduced va variants tu dau
+  bang it nhat 2-3 seeds; khong so mot variant mot seed voi baseline duy nhat
+  de dua ra ket luan chac chan.
+- Neu fine-tune augmentation, dung checkpoint baseline va day du 50k train;
+  khong chi train tren 701 train errors. Ghi ro day la fine-tune, khong so
+  truc tiep thoi gian train tu dau.
+- Ghi ca best val accuracy, best val loss, checkpoint/epoch tuong ung,
+  macro-F1, confusion matrix, per-class recall, runtime va so mau loi.
+
+================================================================================
+7. HUONG CAI TIEN - XEP THEO UU TIEN VA GIA TRI THUC NGHIEM
+================================================================================
+
+UU TIEN 1: Ba spatial orders khac nhau [row,column,morton]
+Muc tieu: cai thien inductive bias cua ba TN branches ma khong tang so nhanh
+hay kich thuoc anh.
+
+Can lam:
+- Giu 16x16, 3 branches, full9 Linear, preprocess resize va lich train baseline.
+- Chi doi spatial_orders tu mac dinh [row,row,row] thanh [row,column,morton].
+- Code FullQuantumQCNN da ho tro permutation nay; runner hien tai can truyen
+  spatial_orders vao FQ_ARCH/config de thí nghiem reproducible.
+- Chay cung seed/split va so voi [row,row,row].
+
+Vi sao uu tien:
+- Code core pool cap theo thu tu site, nen permutation lam thay doi pixel nao
+  duoc ghep va nhom som.
+- Column co the thay doi huong gom, Morton co the dua cac diem trong patch 2D
+  vao gan nhau som hon. Day la gia thuyet topology, khong bao dam accuracy.
+- Chi phi va so tham so gan nhu khong doi; 3 branches van la 3 branches.
+
+Rui ro:
+- Morton mapping hien tai can duoc kiem tra truc quan/dinh nghia voi kich thuoc
+  hinh; khong coi ket qua tot hon mot seed la ket luan.
+- Neu warm-start checkpoint row-major, weights core da hoc theo row; doi order
+  khi nap checkpoint la mismatch ve y nghia features. De ablation sach, train
+  tu dau voi seed tuong ung, hoac ghi ro day la transfer/fine-tune khac.
+
+UU TIEN 2: Anti-aliasing ablation cho 28x28 -> 16x16
+Muc tieu: giam aliasing/mat net do downsampling, khong doi TN/readout.
+
+Can lam:
+- So F.interpolate bilinear hien tai voi bilinear antialias=True.
+- Chi doi preprocessing flag; cung model, split, seed, optimizer, augmentation
+  off.
+- Luu ra config de checkpoint co the tai lap.
+
+Vi sao co co so:
+- data/preprocessing.py hien tai khong bat antialias.
+- Input MNIST downsamplet hon 40% theo chieu, chi tiet net co the anh huong.
+- Day la ablation re hon tang 32x32 va khong tang input sites.
+
+Rui ro:
+- Anti-alias lam net muot hon, co the xoa chi tiet huu ich. Chi la thí nghiem,
+  khong tu dong tot hon.
+
+UU TIEN 3: Warm-start augmentation nhe, khong doi readout
+Muc tieu: tang kha nang chiu lech viet tay ma khong them head.
+
+Phuong an:
+- Khoi dau tu fq_phase3_reupload_best.pt.
+- Train tren day du 50k train; validation giu ToTensor, cung 10k indices.
+- Thu dich toi da 1 pixel (translate xap xi 0.03-0.04 tren anh 28px) va xoay
+  ±3-5 do; bat dau nhe hon config ±8 do/5%.
+- 5-10 epochs, core LR khoang 1e-5 den 3e-5, readout LR khoang 1e-4 den 3e-4
+  la diem khoi dau de thu, khong phai gia tri da duoc xac nhan.
+- Theo doi validation loss, accuracy, per-class recall va confusion changes;
+  giu checkpoint goc neu validation suy giam.
+
+Luu y:
+- Fine-tune voi augmentation la thay doi training distribution; train accuracy
+  nen do them tren clean train subset rieng neu can so voi baseline.
+- Khong fine-tune tren chi tap hard errors; ghi chu du an da neu nguy co
+  overfit/catastrophic forgetting khi chi train tap nho.
+
+UU TIEN 4: Readout ablation nho, tach khoi augmentation
+Thu tu:
+1) Linear 276->10 baseline.
+2) MLP hidden 64, khong augmentation.
+3) Chi neu hidden 64 co loi ich, thu hidden 128 hoac augmentation rieng.
+4) Chi cuoi cung moi thu hidden 256 + augmentation.
+
+Giu core, split, seed va schedule nhu nhau. So validation loss va calibration
+khong chi accuracy. Neu val accuracy tang nhung val loss/overconfidence xau di,
+khong coi la cai tien toan dien.
+
+UU TIEN 5: 32x32 padding
+- Co co so neu cac loi tap trung vao net nho/chi tiet bi resize lam mat.
+- Doi lai, input sites tang 4 lan, so pooling blocks tu 5 len 7; code training
+  co batch size mac dinh 16 thay vi baseline 64. Runtime/VRAM phai bao cao.
+- Chay het 3 phase va lay history goc truoc khi so. Dung cung split, seed,
+  checkpoint selection. Khong so phase-1 32x32 voi checkpoint phase-3 16x16.
+- Neu muc tieu chi la kiem tra thong tin chi tiet, can co input anti-alias/
+  32x32 ablation doc lap; khong doi ca resolution va readout trong cung run.
+
+UU TIEN 6: TN/MPS co bond dimension thuc
+- Day la huong giai quyet truc tiep nhat cho viec mat tuong quan qua trace,
+  nhung can thay doi bieu dien/core thay vi tang tham so readout.
+- Prototype chi=2 truoc; sau do moi can nhac chi=4.
+- Do complexity, memory, runtime, gradient stability va accuracy.
+- Khong co flag bond_dimension trong QuantumTNCore hien tai; khong mo ta viec
+  tang final_qubits nhu tang bond dimension. Day la project code moi, rui ro
+  cao va khong phai buoc toi uu nhanh.
+
+UU TIEN 7: Optimizer/regularization
+- Chi thu sau khi biet preprocessing/order/readout nao co ich.
+- AdamW weight_decay nho co the thu voi MLP head, nhung baseline gap hien chua
+  chi ra overfit nang va no khong sua duoc topology pooling.
+- Khong dong thoi doi init_scale, batch size, LR, readout, augmentation va
+  spatial orders.
+
+================================================================================
+8. MA TRAN ABLATION DE XAC DINH NGUYEN NHAN
+================================================================================
+
+Run A0: Baseline row,row,row + full9 Linear + khong augmentation.
+Run A1: A0, chi doi spatial_orders=[row,column,morton].
+Run A2: A0, chi bat antialias khi resize.
+Run A3: A0, chi doi readout sang MLP hidden=64.
+Run A4: A0, chi augmentation nhe; neu fine-tune, danh dau ro checkpoint warm start.
+Run A5: Ket hop cac thay doi da co loi ich rieng le, khong ket hop tu dau.
+Run A6: 32x32 pad, baseline readout va augmentation off.
+
+Kiem soat:
+- Cung 50k/10k indices, split_seed=20260911.
+- Dung seed training chung de so paired runs; lap them seed 1 va seed 2 neu
+  tai nguyen cho phep. Bao cao mean/std hoac range, khong chi max.
+- Giu official test khong dung cho tuning. Sau khi chot mot cau hinh, co the
+  danh gia test mot lan de bao cao cuoi.
+- Bao cao checkpoint theo hai tieu chi rieng:
+  + best validation accuracy;
+  + best validation loss.
+  Ghi epoch va cac metric cua tung checkpoint, khong tron metric giua epoch.
+- Them confusion matrix, per-class recall, macro-F1, so mau duoc sua va so
+  mau moi bi sai so voi baseline.
+- Ghi runtime per epoch va tong runtime. So sanh compute cung voi accuracy.
+
+================================================================================
+9. TIEU CHI QUYET DINH
+================================================================================
+
+Baseline tham chieu hien co:
+- Best validation loss: 0.074029.
+- Validation accuracy tai checkpoint best loss: 97.71%.
+- Best validation accuracy trong history: 97.73% o epoch khac.
+- 10.000 validation mau: moi 1 mau tuong ung 0.01 diem phan tram.
+- 97.71% tuong ung khoang 229 mau sai; 99% tuong ung khoang 100 mau sai.
+- Mot seed; khong co confidence interval/variance qua nhieu initialization.
+
+De goi la co dau hieu tot:
+- Lap lai cai thien tren hon mot seed hoac co paired improvement ro rang.
+- Accuracy tang ma validation loss khong xau dang ke.
+- Khong co lop nao sut recall manh; confusion errors net giam.
+- Neu chi mot seed tang 0.02-0.05 diem phan tram (2-5 mau tren validation),
+  khong nen xem la bang chung manh vi co the la dao dong checkpoint/seed.
+- Neu accuracy tang nhung loss xau, xem do tin cay va calibration truoc khi
+  chon model.
+
+Khong cam ket dat 99%. Muc tieu nay can giam khoang 129 loi validation so voi
+baseline 97.71%, mot thay doi nho trong MLP/augmentation khong duoc mac dinh la
+se dat duoc.
+
+================================================================================
+10. KHUYEN NGHI THUC THI CUOI
+================================================================================
+
+Neu chi co nguon luc cho 1 thí nghiem moi:
+1) Dung baseline 16x16, full9 Linear, khong augmentation.
+2) Train lai ba nhanh voi spatial_orders=[row,column,morton].
+3) Cung split/seed/schedule; luu config, history, checkpoint va runtime.
+4) So voi baseline row,row,row. Neu co loi ich, lap seed tiep theo.
+
+Neu muc tieu la tang accuracy voi it thay doi kien truc:
+1) Fine-tune warm-start baseline tren toan bo train split voi augmentation nhe.
+2) Giu readout Linear, validation sach, LR nho va early stopping.
+3) Chi thu MLP sau khi biet augmentation rieng co loi ich hay khong.
+
+Neu loi sai chu yeu do mat net/chi tiet:
+- Chay antialias ablation va sau do 32x32 pad; can history day du de so sanh.
+
+Neu cac huong tren khong giai quyet duoc:
+- Xay prototype MPS/TN co bond dimension de giu tuong quan qua pooling; day la
+  huong nghien cuu kien truc, khong phai sua mot hyperparameter hien co.
+
+Phan tich nay do Copilot thuc hien dua tren code va artifact trong workspace.
+Khong co model nao duoc train boi Copilot trong qua trinh tao bao cao nay.

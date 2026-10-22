@@ -27,7 +27,7 @@ D:\tensornetwork_mnist\tensornetwork_mnist\venv\Scripts\python.exe D:\tensornetw
 
 The same folder is the default output directory. It must be empty or not exist when starting a run. The script saves separate best checkpoints and histories for each phase, combined history CSV, configuration JSON, split indices, summary, plot, and final best checkpoint under `runs/mlp_aug_3phase/`.
 
-Each epoch log prints train loss/accuracy, validation loss/accuracy, both learning rates, elapsed seconds, and `*best`. Phase 3 can early-stop, just like the original run.
+During train and validation, the terminal updates the current batch, running loss/accuracy, and elapsed seconds in place. At the end of each epoch it prints the epoch metrics, both learning rates, elapsed time, and `*best`. Phase 3 can early-stop, just like the original run.
 
 The AnyDesk venv should already contain compatible PyTorch and torchvision. `requirements.txt` lists only NumPy and Matplotlib; do not replace the existing CUDA-enabled PyTorch installation for this experiment.
 cd D:\tensornetwork_mnist\tensornetwork_mnist
